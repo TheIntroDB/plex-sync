@@ -102,7 +102,8 @@ func (m *Model) statusScreen() string {
 		used = m.stats.RequestsToday
 	}
 	b.WriteString(fmt.Sprintf("  today         %d of %d (%.0f%%)\n",
-		used, cfg.TheIntroDB.DailyBudget, percent(used, cfg.TheIntroDB.DailyBudget)))
+		used, cfg.TheIntroDB.EffectiveDailyBudget(),
+		percent(used, cfg.TheIntroDB.EffectiveDailyBudget())))
 	if m.usage.RemainingKnown {
 		b.WriteString(fmt.Sprintf("  API reports   %d left\n", m.usage.Remaining))
 	}
@@ -306,7 +307,7 @@ func (m *Model) settingsScreen() string {
 	b.WriteString(fmt.Sprintf("  TheIntroDB      %s\n", cfg.TheIntroDB.BaseURL))
 	b.WriteString(fmt.Sprintf("  api key         %s\n", setOrNot(cfg.TheIntroDB.APIKey != "")))
 	b.WriteString(fmt.Sprintf("  daily budget    %d requests, %.2f s apart\n",
-		cfg.TheIntroDB.DailyBudget, cfg.TheIntroDB.MinDelay()))
+		cfg.TheIntroDB.EffectiveDailyBudget(), cfg.TheIntroDB.MinDelay()))
 
 	b.WriteString("\n" + styleTitle.Render("Segments") + "\n")
 	for _, kind := range []string{"intro", "recap", "credits", "preview"} {

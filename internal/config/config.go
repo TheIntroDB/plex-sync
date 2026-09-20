@@ -210,6 +210,26 @@ func (t TheIntroDB) MinDelay() float64 {
 	return t.WindowS / float64(t.MaxPerWindow)
 }
 
+// AnonymousDailyBudget is the allowance without an API key: 500 per public IP
+// per UTC day, against 1000 for an account.
+const AnonymousDailyBudget = 500
+
+// EffectiveDailyBudget is the allowance that actually applies.
+//
+// Budgeting for 1000 requests when only 500 are allowed means discovering the
+// limit by being rate-limited for the rest of the day, so an anonymous client
+// budgets for the anonymous allowance. A non-positive budget still means
+// "uncounted".
+func (t TheIntroDB) EffectiveDailyBudget() int {
+	if t.DailyBudget <= 0 {
+		return t.DailyBudget
+	}
+	if t.APIKey == "" && t.DailyBudget > AnonymousDailyBudget {
+		return AnonymousDailyBudget
+	}
+	return t.DailyBudget
+}
+
 // ResolvedDatabase returns the Plex database path, or "" when unset.
 func (p Plex) ResolvedDatabase() string {
 	if p.Database != "" {
@@ -342,14 +362,29 @@ func FindFile() string {
 
 // Load reads the configuration, applying environment overrides.
 //
-// A missing file is not an error: defaults plus the environment are a valid
-// configuration, which is what a container run relies on.
+// A file that was discovered but is missing is fine: defaults plus the
+// environment are a valid configuration, which is what a container run relies
+// on. A file the caller named explicitly and that does not exist is an error,
+// because naming a path means you meant it and a silent fallback would hide a
+// typo.
 func Load(path string) (*Config, error) {
 	cfg := Default()
+	explicit := path != ""
 	if path == "" {
 		path = FindFile()
 	}
 	cfg.Path = path
+
+	if path != "" {
+		if _, err := os.Stat(path); err != nil {
+			if explicit {
+				return nil, fmt.Errorf("config file: %w", err)
+			}
+			cfg.Path = ""
+			path = ""
+		}
+	}
+
 	if path != "" {
 		md, err := toml.DecodeFile(path, cfg)
 		if err != nil {
@@ -538,6 +573,11 @@ func Example() string {
 # Environment variables override this file (PLEX_URL, PLEX_TOKEN, PLEX_DB,
 # PLEX_CONFIG_DIR, TIDB_API_KEY, TIDB_API_URL, TIDB_PLEX_STATE_DIR).
 
+# Top-level keys must come before the first section header, or TOML reads them
+# as part of that section.
+state_dir = "` + defaultStateDir() + `"
+log_level = "info"
+
 [plex]
 # Base URL of your Plex Media Server.
 url = "http://127.0.0.1:32400"
@@ -581,8 +621,5 @@ backup = true
 # Local JSON control API (no web interface). Used by the TUI and by scripts.
 enabled = true
 addr = "127.0.0.1:8765"
-
-state_dir = "` + defaultStateDir() + `"
-log_level = "info"
 `
 }

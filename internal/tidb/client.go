@@ -206,6 +206,10 @@ type Client struct {
 // own default, and a non-positive DailyBudget means "uncounted". A nil ledger
 // disables caching and budget counting; a nil httpclient gets a default one.
 func NewClient(cfg config.TheIntroDB, led *ledger.Ledger, hc *httpclient.Client) *Client {
+	// Without a key the public allowance is 500 requests a day, not 1000.
+	// Budget for the allowance that actually applies rather than discovering it
+	// by being rate-limited for the rest of the day.
+	cfg.DailyBudget = cfg.EffectiveDailyBudget()
 	if hc == nil {
 		timeout := time.Duration(cfg.TimeoutS * float64(time.Second))
 		if timeout <= 0 {

@@ -115,7 +115,7 @@ func configShowCmd(g *globals) *cobra.Command {
 			fmt.Fprintf(out, "  database           : %s\n", orNone(cfg.Plex.ResolvedDatabase()))
 			fmt.Fprintf(out, "\n[theintrodb]\n  url                : %s\n", cfg.TheIntroDB.BaseURL)
 			fmt.Fprintf(out, "  api key            : %s\n", mask(cfg.TheIntroDB.APIKey))
-			fmt.Fprintf(out, "  daily budget       : %d requests\n", cfg.TheIntroDB.DailyBudget)
+			fmt.Fprintf(out, "  daily budget       : %d requests\n", cfg.TheIntroDB.EffectiveDailyBudget())
 			fmt.Fprintf(out, "  pacing             : %.2f s between requests\n", cfg.TheIntroDB.MinDelay())
 			fmt.Fprintf(out, "\n[sources]\n  order              : %s\n", strings.Join(cfg.Sources.Ordered(), ", "))
 			fmt.Fprintf(out, "  chapters           : %t\n", cfg.Sources.Chapters)
@@ -240,7 +240,7 @@ func viewOf(cfg *config.Config) effectiveView {
 	v.Plex.HasToken = cfg.Plex.Token != ""
 	v.TheIntroDB.BaseURL = cfg.TheIntroDB.BaseURL
 	v.TheIntroDB.HasAPIKey = cfg.TheIntroDB.APIKey != ""
-	v.TheIntroDB.DailyBudget = cfg.TheIntroDB.DailyBudget
+	v.TheIntroDB.DailyBudget = cfg.TheIntroDB.EffectiveDailyBudget()
 	v.TheIntroDB.MinDelay = cfg.TheIntroDB.MinDelay()
 	v.TheIntroDB.MaxPerWindow = cfg.TheIntroDB.MaxPerWindow
 	v.TheIntroDB.WindowSeconds = cfg.TheIntroDB.WindowS

@@ -255,7 +255,7 @@ func (s *Server) register() {
 		if runs, err := s.app.Ledger.Runs(25); err == nil {
 			out.Body.Runs = runs
 		}
-		out.Body.Budget = s.app.Cfg.TheIntroDB.DailyBudget
+		out.Body.Budget = s.app.Cfg.TheIntroDB.EffectiveDailyBudget()
 		out.Body.Sources = s.app.Cfg.Sources.Ordered()
 		out.Body.Policy = s.app.Cfg.Apply.Policy
 		return out, nil

@@ -350,7 +350,7 @@ func newStatusCmd(g *globals) *cobra.Command {
 					"ledger":  stats,
 					"runs":    runs,
 					"usage":   application.TIDB.Usage(),
-					"budget":  application.Cfg.TheIntroDB.DailyBudget,
+					"budget":  application.Cfg.TheIntroDB.EffectiveDailyBudget(),
 					"sources": application.Cfg.Sources.Ordered(),
 				}
 				encoder := json.NewEncoder(stdout(cmd))
@@ -366,7 +366,7 @@ func newStatusCmd(g *globals) *cobra.Command {
 			fmt.Fprintf(out, "markers recorded  %d across %d item(s)\n",
 				stats.AppliedMarkers, stats.AppliedItems)
 			fmt.Fprintf(out, "requests today    %d of %d",
-				stats.RequestsToday, application.Cfg.TheIntroDB.DailyBudget)
+				stats.RequestsToday, application.Cfg.TheIntroDB.EffectiveDailyBudget())
 			if usage.RemainingKnown {
 				fmt.Fprintf(out, " (%d left according to the API)", usage.Remaining)
 			}
