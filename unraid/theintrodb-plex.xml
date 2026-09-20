@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>tidb-plex</Name>
+  <Repository>theintrodb/tidb-plex:latest</Repository>
+  <Registry>https://hub.docker.com/r/theintrodb/tidb-plex/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/TheIntroDB/plex-integration/issues</Support>
+  <Project>https://github.com/TheIntroDB/plex-integration</Project>
+  <Overview>
+    Fills in Plex's intro and credits markers from TheIntroDB, so Plex does not
+    have to fingerprint every file. Terminal and command line only: run it once
+    with `docker exec -it tidb-plex /tidb-plex` to open the interface, and let
+    the scheduler run `sync` for you.
+  </Overview>
+  <Category>MediaApp:Video Tools:Utilities</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/TheIntroDB/plex-integration/main/unraid/theintrodb-plex.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs>sync --yes</PostArgs>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Plex URL" Target="PLEX_URL" Default="http://192.168.1.10:32400" Mode="" Description="Base URL of your Plex Media Server, as reachable from this container." Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.10:32400</Config>
+
+  <Config Name="Plex token" Target="PLEX_TOKEN" Default="" Mode="" Description="Your Plex token. Find it in Plex Web: open any item, then Get Info, View XML, and copy the X-Plex-Token value from the URL." Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="TheIntroDB API key" Target="TIDB_API_KEY" Default="" Mode="" Description="Optional. An API key raises the allowance to 1000 requests a day and includes your own pending submissions." Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <Config Name="Plex Media Server folder" Target="/plex" Default="" Mode="ro" Description="The Plex application support folder, mounted READ ONLY. Must be the real path, not an Unraid /mnt/user FUSE path: SQLite locking there is unreliable and a write can corrupt the database. For the official Plex container that is /mnt/cache/appdata/plex/Library/Application Support/Plex Media Server, or use the Docker volume path if Plex stores its library on a volume." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server</Config>
+
+  <Config Name="Plex database path" Target="PLEX_DB" Default="/plex/com.plexapp.plugins.library.db" Mode="" Description="The database inside the mounted folder. Only change this if you mounted the application support folder somewhere else." Type="Variable" Display="advanced" Required="false" Mask="false">/plex/com.plexapp.plugins.library.db</Config>
+
+  <Config Name="State folder" Target="/state" Default="" Mode="rw" Description="Ledger, backups of the Plex database, undo journals and fingerprints. Back this up: without the ledger the tool cannot tell its own markers from Plex's." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/tidb-plex</Config>
+
+  <Config Name="Enable chapters source" Target="TIDB_PLEX_CHAPTERS" Default="false" Mode="" Description="Use chapter names Plex already extracted. Free: no lookups and no media reads, exact for the file on disk." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Enable local detection" Target="TIDB_PLEX_DETECTION" Default="false" Mode="" Description="Fingerprint episodes that TheIntroDB does not have yet. Needs ffmpeg and fpcalc, which this image does not include, so leave it off unless you build your own image." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Allow writing while Plex runs" Target="TIDB_PLEX_ALLOW_LIVE" Default="false" Mode="" Description="Off by default. When on, a run still refuses to write if anything is playing." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Schedule" Target="TIDB_PLEX_SCHEDULE" Default="30 7 * * *" Mode="" Description="Cron expression for the daily sync. It runs after Plex's own maintenance window so the two are not fighting over the database." Type="Variable" Display="always" Required="false" Mask="false">30 7 * * *</Config>
+
+  <Config Name="Log level" Target="TIDB_PLEX_LOG_LEVEL" Default="info" Mode="" Description="debug, info, warn or error." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
+</Container>

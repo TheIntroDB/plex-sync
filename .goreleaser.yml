@@ -1,0 +1,97 @@
+# GoReleaser configuration.
+#
+# No CGO is involved anywhere, so every target is a plain cross-compile.
+
+version: 2
+
+project_name: tidb-plex
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: tidb-plex
+    main: .
+    binary: tidb-plex
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/TheIntroDB/plex-integration/internal/buildinfo.Version={{.Version}}
+      - -X github.com/TheIntroDB/plex-integration/internal/buildinfo.Commit={{.Commit}}
+      - -X github.com/TheIntroDB/plex-integration/internal/buildinfo.Date={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - '7'
+    ignore:
+      # Windows on ARM is built as arm64; Windows on 32-bit ARM is not a target.
+      - goos: windows
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+      - goos: darwin
+        goarch: arm
+      - goos: linux
+        goarch: arm
+        goarm: ''
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - docs/*.md
+      - unraid/*.xml
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+
+release:
+  draft: true
+  footer: |
+    ## Container image
+
+    ```
+    docker run --rm -it \
+      -e PLEX_URL=http://plex:32400 \
+      -e PLEX_TOKEN=... \
+      -v "/path/to/Plex Media Server:/plex:ro" \
+      -v /path/to/state:/state \
+      theintrodb/tidb-plex:{{ .Tag }} tui
+    ```
