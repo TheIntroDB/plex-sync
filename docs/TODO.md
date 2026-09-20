@@ -45,6 +45,35 @@ Status: **batches 1 to 5 complete**.
 
 These are known gaps, not surprises.
 
+### Verification gaps
+
+Things that are implemented and unit-tested but have never met the real world.
+
+- [ ] **A real Plex server.** Everything runs against a synthetic database built
+      from Plex's real schema and a fake server, so unverified against a live
+      PMS: the exact JSON field spellings each version emits for
+      chapters/markers/guids (all documented variants are read, but a third
+      spelling would silently yield nothing), whether a real server honours the
+      container paging headers, `videoFrameRate` strings beyond the common ones,
+      and `TokenFromPrefs` against a real `Preferences.xml`.
+- [ ] **A real TheIntroDB response.** No live key has been used, so the actual
+      ceiling headers, the shape of real 401/403/429 bodies, and the real
+      nesting of `confidence` are all taken from documentation. A `Retry-After`
+      sent as an HTTP date rather than seconds would be ignored, falling back to
+      the backoff multiplier.
+- [ ] **Byte-exactness of `media_parts.extra_data`.** The percent-encoding rule
+      and the marker shapes are implemented from verified notes and checked by
+      round trip against three hand-written literals, but no row has been
+      compared with what a live Plex wrote.
+- [ ] **Concurrency with Plex itself.** New rows are inserted with an explicit
+      id taken while holding `BEGIN IMMEDIATE`, which is correct under this
+      tool's own write lock and untested against a concurrent Plex writer.
+- [ ] **Fingerprint detection against real media.** The matching maths is
+      unit-tested on synthetic fingerprints and the orchestration is tested with
+      a stubbed runner, but no real file has been fingerprinted.
+
+### Features
+
 - [ ] **Submit** - send Plex's own detected markers back to TheIntroDB. The API
       has `POST /v3/submit` and `PUT /v3/submissions/{id}`; this needs a client
       method, a dry run that shows candidates and their agreement with accepted
@@ -58,13 +87,6 @@ These are known gaps, not surprises.
       The Unraid template offers a `TIDB_PLEX_SCHEDULE` variable that the
       entrypoint does not implement yet, so scheduling is done by cron on the
       host for now.
-- [ ] **End-to-end run against a real Plex server.** Everything here is tested
-      against a synthetic database built from Plex's real schema, and the write
-      path round-trips through it, but it has not yet run against a production
-      library. That is the next thing to do before calling this beta.
-- [ ] **Detection against real media.** The matching maths is unit-tested on
-      synthetic fingerprints and the orchestration is tested with a stubbed
-      runner, but no real file has been fingerprint-matched yet.
 - [ ] **Scheduler examples** for systemd, launchd and Windows Task Scheduler.
 - [ ] **Translations** - TheIntroDB/translations scans integration repos for
       locale directories. This one has none yet.

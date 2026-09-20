@@ -36,7 +36,11 @@ One row per marker.
 
 `index` is why inserting one marker can require rewriting the others: it is a
 single sequence shared by intro, credits and commercial markers for the item,
-one-based or zero-based depending on what is already there, and Plex sorts by it.
+ordered by start time, and Plex sorts by it. The sequence is **0-based**, which
+was established rather than assumed: a tool that has run against production
+libraries builds its own zero-based position list from the same ordering and
+finds its values identical to what Plex had stored, byte for byte, across tens
+of thousands of rows.
 
 Every tag must already exist in `tags` with `tag_type = 12`. A database that has
 never had a marker does not have that tag row, and markers cannot be created

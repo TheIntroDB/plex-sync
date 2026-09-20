@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
 	"github.com/TheIntroDB/plex-integration/internal/config"
 	"github.com/TheIntroDB/plex-integration/internal/httpclient"
 	"github.com/TheIntroDB/plex-integration/internal/model"
@@ -34,10 +35,6 @@ import (
 const (
 	// Product is the X-Plex-Product value sent with every request.
 	Product = "tidb-plex"
-	// Version is the X-Plex-Version value sent with every request.
-	Version = "0.1.0"
-	// UserAgent is the HTTP User-Agent of the shared client.
-	UserAgent = Product + "/" + Version
 	// DefaultURL applies when the configuration leaves plex.url empty.
 	DefaultURL = "http://127.0.0.1:32400"
 	// ItemWindow is how many items a paged enumeration asks for per request.
@@ -49,6 +46,16 @@ const (
 	// which the /all endpoint takes as ?type=.
 	metadataTypeMovie   = 1
 	metadataTypeEpisode = 4
+)
+
+// Version and UserAgent report the real build rather than a constant that has to
+// be remembered at release time, so a server operator reading their logs sees
+// which build is talking to them.
+var (
+	// Version is the X-Plex-Version value sent with every request.
+	Version = buildinfo.Version
+	// UserAgent is the HTTP User-Agent of the shared client.
+	UserAgent = Product + "/" + Version
 )
 
 // HTTPError is a non-2xx answer that the caller did not treat as a fallback.

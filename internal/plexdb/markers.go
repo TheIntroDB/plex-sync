@@ -311,6 +311,10 @@ func reconcile(live []model.ExistingMarker, plan model.ItemPlan) (string, bool) 
 // renumberIndex rebuilds the index column for every marker row of an item,
 // numbering by start time across all marker types, and journals each row whose
 // index moves. It returns how many rows changed.
+//
+// The sequence is 0-based. That is not a guess: a verified third-party tool
+// built its own zero-based position list from the same ORDER BY and found its
+// values byte-identical to what Plex had stored, across a whole library.
 func renumberIndex(ctx context.Context, q querier, ratingKey int64, j *Journal) (int, error) {
 	rows, err := q.QueryContext(ctx, `SELECT g.id, COALESCE(g."index", 0)
 FROM taggings g
