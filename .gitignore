@@ -1,0 +1,26 @@
+# Binaries and build output
+/tidb-plex
+/dist/
+/bin/
+*.exe
+*.test
+*.out
+
+# Runtime state: ledger, caches, backups, undo logs
+/state/
+*.db
+*.db-wal
+*.db-shm
+
+# Local configuration
+/tidb-plex.toml
+*.local.toml
+
+# Fingerprint store
+*.fp.gz
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
