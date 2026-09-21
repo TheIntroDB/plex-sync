@@ -115,6 +115,24 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      - name: Update the Homebrew formula in the tap
+        # After the release exists, so the URLs it writes point at something
+        # real. Skipped when the token is not set, with a line saying so: a
+        # missing secret must not hold up a release, and the formula already in
+        # the tap keeps working at its own version.
+        if: github.event_name == 'push' && inputs.snapshot != true
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set, so the tap formula is unchanged."
+            echo "brew install keeps working, at the version the tap already has."
+            exit 0
+          fi
+          python3 scripts/update-homebrew-formula.py "${GITHUB_REF_NAME#v}" \
+            --checksums dist/checksums.txt
+          echo "Tap formula updated. Check it with: brew info pasithea0/tap/plex-sync"
+
       - name: Summarise
         run: |
           echo "### Artifacts" >> "$GITHUB_STEP_SUMMARY"
