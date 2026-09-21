@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -20,19 +22,22 @@ import (
 // EnvConfig names the variable that points at a config file.
 const EnvConfig = "TIDB_PLEX_CONFIG"
 
-// PlexDBName is the Plex database, relative to the Plex application-support dir.
+// PlexDBName is the Plex database file name.
 const PlexDBName = "com.plexapp.plugins.library.db"
+
+// PlexDBSubpath is where the database actually lives inside Plex's application
+// support directory. Plex has never put it at the top level: it is under
+// "Plug-in Support/Databases", whatever the platform or the container image.
+const PlexDBSubpath = "Plug-in Support/Databases/" + PlexDBName
+
+// LocalAdminTokenFile is the per-install token newer Plex versions write. It is
+// read before Preferences.xml because it always exists on a modern install and
+// grants local API access without any cloud account.
+const LocalAdminTokenFile = ".LocalAdminToken"
 
 // fusePrefixes are mount points whose SQLite locking cannot be trusted.
 // Writing the Plex database through Unraid's shfs/FUSE layer can corrupt it.
 var fusePrefixes = []string{"/mnt/user/", "/mnt/user0/"}
-
-// defaultPlexDirs are the places Plex's application-support directory usually is.
-var defaultPlexDirs = []string{
-	"/config/Library/Application Support/Plex Media Server", // linuxserver.io image
-	"/var/lib/plexmediaserver/Library/Application Support/Plex Media Server",
-	"/opt/plex/Library/Application Support/Plex Media Server",
-}
 
 // Config is the whole configuration tree.
 type Config struct {
@@ -135,6 +140,13 @@ type Apply struct {
 	ChunkSize                  int  `toml:"chunk_size"`
 	// PALGuard ignores community timings for PAL speed-up files.
 	PALGuard bool `toml:"pal_guard"`
+	// CreateMissingMarkerTag creates the marker tag when Plex has not made one.
+	//
+	// Off by default: inventing a schema row is a bigger step than writing a
+	// marker, so it is taken deliberately. It is needed on a server without Plex
+	// Pass, where Plex will never create the row itself because writing markers
+	// is a Plex Pass feature.
+	CreateMissingMarkerTag bool `toml:"create_missing_marker_tag"`
 }
 
 // API configures the local control API (JSON only, no web interface).
@@ -230,13 +242,116 @@ func (t TheIntroDB) EffectiveDailyBudget() int {
 	return t.DailyBudget
 }
 
-// ResolvedDatabase returns the Plex database path, or "" when unset.
+// ResolvedDatabase returns the Plex database path, or "" when none can be found.
+//
+// The database is not at the top of the application support directory: it lives
+// under "Plug-in Support/Databases", whatever the platform or container image. A
+// path given explicitly is used as-is, because a user who names a file means
+// that file. With nothing configured, the machine is searched, so a local
+// install works without any configuration at all.
 func (p Plex) ResolvedDatabase() string {
 	if p.Database != "" {
 		return p.Database
 	}
 	if p.ConfigDir != "" {
-		return filepath.Join(p.ConfigDir, PlexDBName)
+		return filepath.Join(p.ConfigDir, PlexDBSubpath)
+	}
+	if dir := DiscoverPlexDir(); dir != "" {
+		return filepath.Join(dir, PlexDBSubpath)
+	}
+	return ""
+}
+
+// ResolvedToken returns the configured token, or the one Plex keeps on this
+// machine when none was configured.
+func (p Plex) ResolvedToken() string {
+	if p.Token != "" {
+		return p.Token
+	}
+	dir := p.ConfigDir
+	if dir == "" {
+		dir = DiscoverPlexDir()
+	}
+	if token := ReadPlexToken(dir); token != "" {
+		return token
+	}
+	// The last resort is the platform's own preferences store, which is outside
+	// the application support directory.
+	if runtime.GOOS == "darwin" {
+		return tokenFromPlist()
+	}
+	return ""
+}
+
+// ReadPlexToken reads the token that belongs to one Plex application-support
+// directory. It never looks outside it, so calling it with a directory can only
+// ever return that installation's token.
+//
+// Two shapes are in the wild:
+//
+//   - ".LocalAdminToken", written by modern Plex versions. Preferred: it is
+//     per-install, needs no cloud account, and is the only one present on a
+//     fresh macOS install.
+//   - "Preferences.xml", used by the Linux and Windows distributions and by the
+//     container images.
+func ReadPlexToken(configDir string) string {
+	dir := strings.TrimSpace(configDir)
+	if dir == "" {
+		return ""
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, LocalAdminTokenFile)); err == nil {
+		if token := strings.TrimSpace(string(raw)); token != "" {
+			return token
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "Preferences.xml"))
+	if err != nil {
+		return ""
+	}
+	for _, re := range plexTokenPatterns {
+		if m := re.FindSubmatch(raw); len(m) > 1 && len(m[1]) > 0 {
+			return string(m[1])
+		}
+	}
+	return ""
+}
+
+// plexTokenPatterns match the shapes Plex has used for the server token in
+// Preferences.xml, most likely first.
+var plexTokenPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`<Setting[^>]*id="PlexOnlineToken"[^>]*value="([^"]*)"`),
+	regexp.MustCompile(`<Setting[^>]*value="([^"]*)"[^>]*id="PlexOnlineToken"`),
+	regexp.MustCompile(`<PlexOnlineToken[^>]*value="([^"]*)"`),
+	regexp.MustCompile(`PlexOnlineToken="([^"]*)"`),
+}
+
+// tokenFromPlist reads the token from the macOS preferences plist.
+//
+// There is no plist reader in the standard library and this is the last
+// fallback on one platform, so it shells out rather than adding a dependency
+// for a case that only applies to installs predating the local admin token.
+func tokenFromPlist() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	plist := filepath.Join(home, "Library", "Preferences", "com.plexapp.plexmediaserver.plist")
+	if _, err := os.Stat(plist); err != nil {
+		return ""
+	}
+	for _, tool := range [][]string{
+		{"/usr/libexec/PlistBuddy", "-c", "Print PlexOnlineToken", plist},
+		{"defaults", "read", "com.plexapp.plexmediaserver", "PlexOnlineToken"},
+	} {
+		out, err := exec.Command(tool[0], tool[1:]...).Output()
+		if err != nil {
+			continue
+		}
+		// PlistBuddy quotes the value; defaults does not.
+		token := strings.Trim(strings.TrimSpace(string(out)), `"`)
+		if token != "" {
+			return token
+		}
 	}
 	return ""
 }
@@ -446,6 +561,7 @@ func (c *Config) applyEnv() {
 	boolean("TIDB_PLEX_CHAPTERS", &c.Sources.Chapters)
 	boolean("TIDB_PLEX_DETECTION", &c.Sources.Detection)
 	boolean("TIDB_PLEX_ALLOW_LIVE", &c.Apply.AllowLive)
+	boolean("TIDB_PLEX_CREATE_MARKER_TAG", &c.Apply.CreateMissingMarkerTag)
 
 	if v, ok := os.LookupEnv("TIDB_PLEX_SOURCES"); ok {
 		c.Sources.Order = splitList(v)
@@ -512,13 +628,8 @@ func (c *Config) Validate() error {
 func (c *Config) CheckDatabase() (string, error) {
 	path := c.Plex.ResolvedDatabase()
 	if path == "" {
-		if dir := DiscoverPlexDir(); dir != "" {
-			path = filepath.Join(dir, PlexDBName)
-		}
-	}
-	if path == "" {
 		return "", errors.New(
-			"Plex database not configured: set plex.database or plex.config_dir " +
+			"Plex database not found: set plex.database or plex.config_dir " +
 				"(PLEX_DB / PLEX_CONFIG_DIR), or run `tidb-plex config check`")
 	}
 	st, err := os.Stat(path)
@@ -540,26 +651,20 @@ func (c *Config) CheckDatabase() (string, error) {
 	return path, nil
 }
 
-// DiscoverPlexDir returns the first existing Plex application-support dir, or "".
+// DiscoverPlexDir returns the first Plex application-support directory that
+// actually holds a database, or "".
+//
+// The order is: the PLEX_CONFIG_DIR override, then the platform's own locations
+// (see plexDirsForOS). A directory is only accepted when a database is really
+// there, so a stale entry in the list costs nothing, and a user who keeps Plex
+// somewhere unusual can point at it with the environment variable or with
+// plex.config_dir / plex.database in the configuration file.
 func DiscoverPlexDir() string {
-	if v := strings.TrimSpace(os.Getenv("PLEX_CONFIG_DIR")); v != "" {
-		if st, err := os.Stat(filepath.Join(v, PlexDBName)); err == nil && !st.IsDir() {
-			return v
-		}
+	if v := strings.TrimSpace(os.Getenv("PLEX_CONFIG_DIR")); v != "" && plexDatabaseIn(v) {
+		return v
 	}
-	candidates := append([]string{}, defaultPlexDirs...)
-	if runtime.GOOS == "darwin" {
-		candidates = append(candidates,
-			filepath.Join(os.Getenv("HOME"), "Library/Application Support/Plex Media Server"))
-	}
-	if runtime.GOOS == "windows" {
-		if local := os.Getenv("LOCALAPPDATA"); local != "" {
-			candidates = append(candidates,
-				filepath.Join(local, "Plex Media Server"))
-		}
-	}
-	for _, dir := range candidates {
-		if st, err := os.Stat(filepath.Join(dir, PlexDBName)); err == nil && !st.IsDir() {
+	for _, dir := range PlatformPlexDirs() {
+		if plexDatabaseIn(dir) {
 			return dir
 		}
 	}

@@ -67,6 +67,16 @@ func Open(cfg *config.Config, log *slog.Logger, opts Options) (*App, error) {
 		ua = buildinfo.UserAgent()
 	}
 
+	// A Plex server requires a token for everything but /identity. When none was
+	// configured, use the one Plex keeps on this machine so that a local install
+	// works without the user having to go and find it.
+	if cfg.Plex.Token == "" {
+		if token := cfg.Plex.ResolvedToken(); token != "" {
+			cfg.Plex.Token = token
+			log.Debug("using the Plex token found on this machine")
+		}
+	}
+
 	application := &App{
 		Cfg: cfg,
 		Log: log,
@@ -172,10 +182,9 @@ func (a *App) Ready(ctx context.Context) Readiness {
 		out.PlexError = err.Error()
 	} else {
 		out.PlexOK = true
-		if container, ok := identity["MediaContainer"].(map[string]any); ok {
-			if version, ok := container["version"].(string); ok {
-				out.PlexVersion = version
-			}
+		// Identity returns the MediaContainer's own contents, not the envelope.
+		if version, ok := identity["version"].(string); ok {
+			out.PlexVersion = version
 		}
 	}
 

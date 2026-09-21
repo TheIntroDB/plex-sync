@@ -19,9 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -344,38 +341,19 @@ func (c *Client) Running(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// plexTokenRes match the shapes Plex has used for the server token in
-// Preferences.xml, most likely first.
-var plexTokenRes = []*regexp.Regexp{
-	regexp.MustCompile(`<Setting[^>]*id="PlexOnlineToken"[^>]*value="([^"]*)"`),
-	regexp.MustCompile(`<Setting[^>]*value="([^"]*)"[^>]*id="PlexOnlineToken"`),
-	regexp.MustCompile(`<PlexOnlineToken[^>]*value="([^"]*)"`),
-	regexp.MustCompile(`PlexOnlineToken="([^"]*)"`),
-}
-
-// TokenFromPrefs reads the server token from Plex's Preferences.xml.
+// TokenFromPrefs returns the token Plex uses for local API access.
 //
-// It is the fallback for a setup that has no token in its config file. An
-// unreadable or tokenless file yields "", never an error: a missing token is
-// reported later, when a request actually fails.
+// It is the fallback for a setup that has no token in its config file. Modern
+// Plex versions write a per-install ".LocalAdminToken" beside the database,
+// which is checked first; "Preferences.xml" covers the Linux, Windows and
+// container distributions. An unreadable or tokenless setup yields "", never an
+// error: a missing token is reported later, when a request actually fails.
 func TokenFromPrefs(configDir string) string {
 	dir := strings.TrimSpace(configDir)
 	if dir == "" {
 		dir = config.DiscoverPlexDir()
 	}
-	if dir == "" {
-		return ""
-	}
-	raw, err := os.ReadFile(filepath.Join(dir, PreferencesFile))
-	if err != nil {
-		return ""
-	}
-	for _, re := range plexTokenRes {
-		if m := re.FindSubmatch(raw); len(m) > 1 && len(m[1]) > 0 {
-			return string(m[1])
-		}
-	}
-	return ""
+	return config.ReadPlexToken(dir)
 }
 
 // sectionKind maps a Plex section type onto the item kind and the metadata_type
