@@ -69,6 +69,44 @@ a real database copy. It found five defects that no synthetic test would have.
 - [x] `undo` gained the same escapes as `apply` (`--live`, `--plex-stopped`,
       `--skip-session-check`); it could not be run at all while Plex ran
 
+## Batch 7 - the verification, made repeatable
+
+- [x] `internal/plexdb/live_test.go` and `scripts/live-e2e.sh`: apply, check every
+      byte that lands, undo, check the row is back exactly as it was
+- [x] The assumption the design rests on is now a test: `taggings` and
+      `media_parts` carry no triggers, because `tags` does and cannot be written
+      from outside Plex
+
+## Batch 8 - the container
+
+- [x] `schedule`: the process holds its own cron, so the image needs no cron
+      daemon and no shell. Cron subset tested, including leap days and the rule
+      that two restricted day fields mean either may match
+- [x] `TIDB_PLEX_SCHEDULE`, `TIDB_PLEX_RUN_ON_START`, `[schedule]` in the config,
+      and `config check` rejecting a malformed expression
+- [x] Two bugs found while testing: `--print-next` ignored the configured
+      schedule, and a read-only scheduled run returned an error instead of a
+      report
+- [x] `docs/scheduling.md`: systemd, launchd, Task Scheduler, cron, container
+- [x] Unraid template: `PostArgs` was `sync --yes`, and its default database path
+      has never existed in any Plex install
+- [x] Image built and run (distroless, no CGO); verified it finds the database in
+      the read-only mount, holds the schedule, runs read-only against a live
+      server, and refuses to write while a session is playing
+
+## Batch 9 - plan files
+
+- [x] `plan --save` and `apply --plan`, so deciding what changes and changing it
+      can happen in different places
+- [x] A plan is reconciled against the database before anything is written;
+      applying the same plan twice writes nothing the second time
+- [x] Format version, atomic save, and provenance (what made it, when, against
+      which database)
+- [x] Verified in the container with Plex unreachable: applied, wrote both
+      markers, undid them again
+- [x] `docs/architecture.md` corrected: its module table still listed the
+      abandoned Python files
+
 ## Not done yet
 
 These are known gaps, not surprises.
