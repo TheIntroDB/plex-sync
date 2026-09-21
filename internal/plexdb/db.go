@@ -1,9 +1,9 @@
 // Package plexdb reads and writes the markers Plex keeps in its SQLite library
 // database.
 //
-// Plex has no HTTP API for intro or credits markers: its marker endpoint
-// accepts bookmarks only, so every tool in this space edits "library.db"
-// directly and so does this package. Everything here is written defensively.
+// Plex documents marker endpoints, but creating a marker through them needs Plex
+// Pass, so every tool in this space edits "library.db" directly and so does this
+// package. Everything here is written defensively.
 // Every connection sets a busy timeout, writes run in BEGIN IMMEDIATE
 // transactions, every operation is journalled before it happens, and an item
 // whose live markers no longer match the plan it was built from is skipped

@@ -16,9 +16,11 @@ markers.
 3. Run `tidb-plex apply --yes`, or `tidb-plex sync --yes` from a scheduled job.
 
 If the plan says items have no data, TheIntroDB does not have those segments yet.
-Contributing them is done on [theintrodb.org](https://theintrodb.org) for now; a
-`submit` command that sends Plex's own detections back to the API is planned, and
-is tracked in [TODO.md](TODO.md).
+
+This integration only ever requests segments and writes them into Plex. It does
+not submit anything, so there is no `submit` command. If you want to contribute a
+timing you know, do it on [theintrodb.org](https://theintrodb.org), which is
+where contributions are made.
 
 ## "no-provider-id"
 

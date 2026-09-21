@@ -8,10 +8,10 @@ byte for byte).
 
 ## Why the database is involved at all
 
-Plex has no API for intro or credits markers. The marker endpoint exists, but
-`POST /library/metadata/{id}/marker` returns HTTP 400 for the `intro` and
-`credits` types: it accepts bookmarks only. So every tool in this space writes
-the Plex database directly, and this one is no exception.
+Plex documents marker endpoints, and creating a marker through them is a Plex
+Pass feature. On a server without Plex Pass, `POST /library/metadata/{id}/marker`
+returns HTTP 400 for every marker type, so writing markers means writing the
+database. Every tool in this space does, and this one is no exception.
 
 Everything that can be done over HTTP is done over HTTP. Only the marker write,
 the backup and the undo touch the file.

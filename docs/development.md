@@ -143,9 +143,11 @@ matching maths is covered even where no media is available.
 ## Testing
 
 - Unit tests never touch the network. Both HTTP clients take an injectable
-  fiber client, and the tests point them at a `testdata` server or a stub.
-- `internal/plex/*/testdata/` holds synthetic databases built from the real
-  schemas. Write tests copy them to a temporary directory first.
+  fiber client, and the tests point them at an `httptest` server or a stub.
+- There are no database files in the repository. `internal/plexdb`'s fixture
+  builds a real Plex schema in a temporary directory from the statements Plex
+  itself uses, and the write tests copy that first, so nothing is shared between
+  tests and nothing is left behind.
 
 ### Tests against real data
 

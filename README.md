@@ -9,11 +9,13 @@
 every file in your library. It is a single binary with a terminal interface and
 a scriptable command line. There is no web interface and no browser involved.
 
-It is the official Plex integration for TheIntroDB. It talks to TheIntroDB only:
-the competing introdb.app database is deliberately not a source here.
+It is the official Plex integration for TheIntroDB, and talks to TheIntroDB
+only. Nothing else is consulted for timings: what it writes comes from TheIntroDB
+or from your own files.
 
-**Status:** alpha. The write path is covered by tests against a synthetic Plex
-database, but it has not yet run against a large production library.
+**Status:** beta. The write path is verified end to end against a copy of a real
+Plex database, including a byte-identical undo, and inside the container image.
+It has not yet run against a large production library.
 
 ---
 
