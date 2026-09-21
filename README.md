@@ -174,9 +174,14 @@ Run `plex-sync` with no arguments in a terminal and you get the interface:
 | `2` | Library: every matched item with its ids, sources and marker state |
 | `3` | Plan: exactly what a run would change, before it changes anything |
 | `4` | Runs: history, and the undo journals from previous applies |
-| `5` | Settings: the effective configuration and where it came from |
+| `5` | Settings: every setting, editable in place with the arrow keys and enter |
 | `?` | Help |
 | `q` | Quit |
+
+Settings are changed in the interface: the arrow keys move between rows, enter
+toggles a boolean or cycles a choice, and enter on anything else opens a line you
+type into. Escape abandons an edit. The status line says whether a change needs a
+restart or applies to the next run, and the file is written as you go.
 
 The same work is available as commands, for cron and scripts:
 

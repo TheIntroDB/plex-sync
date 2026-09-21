@@ -91,7 +91,6 @@ var restartKeys = map[string]bool{
 	"plex.url":                true,
 	"plex.token":              true,
 	"theintrodb.api_key":      true,
-	"theintrodb.base_url":     true,
 	"theintrodb.daily_budget": true,
 	"log_level":               true,
 }
@@ -155,12 +154,6 @@ func settingsRows() []setting {
 			help: "Optional. A key raises the daily allowance and is required to submit timings.",
 			get:  func(c *config.Config) string { return c.TheIntroDB.APIKey },
 			set:  func(c *config.Config, v string) error { c.TheIntroDB.APIKey = strings.TrimSpace(v); return nil },
-		},
-		{
-			section: "TheIntroDB", key: "theintrodb.base_url", label: "API address", kind: settingText,
-			help: "Only change this to point at a different TheIntroDB instance.",
-			get:  func(c *config.Config) string { return c.TheIntroDB.BaseURL },
-			set:  func(c *config.Config, v string) error { c.TheIntroDB.BaseURL = strings.TrimSpace(v); return nil },
 		},
 		{
 			section: "TheIntroDB", key: "theintrodb.daily_budget", label: "daily budget", kind: settingInt,
