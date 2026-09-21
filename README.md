@@ -13,10 +13,6 @@ It is the official Plex integration for TheIntroDB, and talks to TheIntroDB
 only. Nothing else is consulted for timings: what it writes comes from TheIntroDB
 or from your own files.
 
-**Status:** beta. The write path is verified end to end against a copy of a real
-Plex database, including a byte-identical undo, and inside the container image.
-It has not yet run against a large production library.
-
 ---
 
 ## What it does
