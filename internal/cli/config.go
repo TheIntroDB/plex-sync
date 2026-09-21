@@ -111,7 +111,7 @@ func configShowCmd(g *globals) *cobra.Command {
 			fmt.Fprintf(out, "state directory    : %s\n", cfg.StateDir)
 			fmt.Fprintf(out, "log level          : %s\n\n", cfg.LogLevel)
 			fmt.Fprintf(out, "[plex]\n  url                : %s\n", cfg.Plex.URL)
-			fmt.Fprintf(out, "  token              : %s\n", mask(cfg.Plex.Token))
+			fmt.Fprintf(out, "  token              : %s\n", tokenState(cfg))
 			fmt.Fprintf(out, "  database           : %s\n", orNone(cfg.Plex.ResolvedDatabase()))
 			fmt.Fprintf(out, "\n[theintrodb]\n  url                : %s\n", cfg.TheIntroDB.BaseURL)
 			fmt.Fprintf(out, "  api key            : %s\n", mask(cfg.TheIntroDB.APIKey))
@@ -265,6 +265,18 @@ func mask(secret string) string {
 		return "(not set)"
 	}
 	return "(set, hidden)"
+}
+
+// tokenState describes the token without printing it, including the one that is
+// discovered on this machine rather than configured.
+func tokenState(cfg *config.Config) string {
+	if cfg.Plex.Token != "" {
+		return "(set, hidden)"
+	}
+	if cfg.Plex.ResolvedToken() != "" {
+		return "(found on this machine, hidden)"
+	}
+	return "(not set)"
 }
 
 func orNone(value string) string {

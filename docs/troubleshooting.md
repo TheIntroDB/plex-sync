@@ -54,10 +54,21 @@ check. Doing so is not recommended.
 
 The Plex database has no marker tag (`tags` row with `tag_type = 12`), which
 means Plex has never created a marker of its own. New markers have to hang off
-that tag, and creating it ourselves would be inventing schema.
+that tag.
 
-Let Plex detect one intro or credits marker, which it does during analysis of an
-episode that has siblings, then run the tool again.
+That row cannot be created from outside Plex. The `tags` table carries an FTS4
+trigger whose table uses Plex's own ICU tokenizer, so every write to it fails
+before the trigger's condition is even considered. The `sqlite3` command fails on
+it too, and so would a build with FTS4 compiled in.
+
+Let Plex create it: it makes one the first time it writes a marker of its own.
+That is a Plex Pass feature, so on a server without Plex Pass this tool cannot
+write markers at all, and says so. The full explanation, with the measurements
+behind it, is in [plex-database.md](plex-database.md).
+
+Nothing else is affected. If your server already has the tag, this never comes
+up: `taggings` and `media_parts`, the tables this tool does write to, carry no
+triggers.
 
 ## Everything is skipped as a PAL speed-up
 

@@ -32,11 +32,18 @@ or by the container's scheduler, and it exits when it is done.
 
 ## Why writes go through the database
 
-Plex has no API for intro or credits markers. Its marker endpoint accepts
-bookmarks only: `POST /library/metadata/{id}/marker` returns HTTP 400 for the
-`intro` and `credits` types. Every tool in this space therefore writes the Plex
-database directly, and so does this one. Everything that can be done over HTTP
-is done over HTTP; only the marker write touches the file.
+Plex does document marker endpoints: `POST /library/metadata/{ids}/marker`
+creates one, and there are edit and delete operations beside it. They are not
+usable here, for a reason worth recording.
+
+Marker creation is a Plex Pass feature. On a server without Plex Pass the
+endpoint answers **400 for every marker type**, including the values that are
+documented, so there is no type to fall back to and no error message that says
+why. That was measured on a real server rather than inferred. Its account
+reports `subscription.active: false`, and its database has never held a marker.
+
+Everything that can be done over HTTP is done over HTTP. Only the marker write,
+the backup and the undo touch the file.
 
 See [plex-database.md](plex-database.md) for the schema, the exact bytes Plex
 expects, and the safety rules that come with editing a live database.

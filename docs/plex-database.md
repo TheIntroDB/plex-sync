@@ -44,7 +44,8 @@ of thousands of rows.
 
 Every tag must already exist in `tags` with `tag_type = 12`. A database that has
 never had a marker does not have that tag row, and markers cannot be created
-until it does. This tool reports that clearly instead of inventing one.
+until it does. See "Why the marker tag cannot be created from outside Plex"
+below for why this tool refuses rather than making one.
 
 ### `media_parts.extra_data`
 
@@ -130,6 +131,63 @@ while people are streaming. The rules below are not optional.
 - **Journal before you write.** Every insert, delete, index change and
   `extra_data` replacement is recorded before it happens, so undo can restore
   the previous bytes. Undo replays the journal in reverse inside one transaction.
+
+## Why the marker tag cannot be created from outside Plex
+
+Marker rows hang off a `tags` row with `tag_type = 12`, and Plex only creates
+that row when it writes a marker of its own, which needs Plex Pass. On a server
+without Plex Pass it never appears, so a tool like this one is the only thing
+that would ever create it. It cannot, and neither can any other tool:
+
+```
+CREATE VIRTUAL TABLE fts4_tag_titles_icu USING fts4(
+  tag, tokenize=collating 'root@colStrength=primary;colAlternate=shifted')
+```
+
+`tags` carries four FTS4 triggers, and one of them inserts into that table. SQLite
+has to prepare a trigger's body before it can run a write against the table the
+trigger is on, and preparing that body means opening the FTS4 table, which means
+resolving the `collating` tokenizer. That tokenizer is Plex's own ICU tokenizer
+and exists only inside the SQLite that Plex ships, so **every** write to `tags`
+fails, before the trigger's `WHEN` clause is ever considered, no matter that a
+`tag_type` of 12 is not in that clause.
+
+Measured, not theorised:
+
+| client | result on `INSERT INTO tags` |
+| --- | --- |
+| this program, pure-Go SQLite | `no such module: fts4` |
+| the system `sqlite3` command | `unknown tokenizer: collating` |
+
+A CGO build with FTS4 compiled in would fail the same way, because FTS4 is not
+the missing part: the tokenizer is. So the row has to come from Plex, and the
+tool says so instead of pretending otherwise. Nothing else is affected: `taggings`
+and `media_parts` carry no triggers at all, and the FTS tables are on
+`metadata_items` and `tags` only.
+
+## Where the files live
+
+The database is never at the top of Plex's application-support directory: it is
+under `Plug-in Support/Databases`. The directory itself is platform-dependent, so
+the tool searches the platform's own locations and accepts the first that really
+holds a database.
+
+| platform | application-support directory |
+| --- | --- |
+| macOS | `~/Library/Application Support/Plex Media Server` |
+| Windows | `%LOCALAPPDATA%\Plex Media Server` |
+| Linux, container | `/config/Library/Application Support/Plex Media Server` |
+| Linux, package | `/var/lib/plexmediaserver/Library/Application Support/Plex Media Server` |
+| Linux, snap | `/var/snap/plexmediaserver/common/Library/Application Support/Plex Media Server` |
+| FreeBSD | `/usr/local/plexdata/Plex Media Server` |
+
+Three ways to point at it yourself, in increasing precedence:
+
+1. `plex.config_dir` in the configuration file, for an unusual layout.
+2. `plex.database` in the configuration file, which names the file itself and is
+   used exactly as written.
+3. `PLEX_CONFIG_DIR` or `PLEX_DB` in the environment, which is what a container
+   and a scheduled job should use.
 
 ## What Plex does to markers on its own
 

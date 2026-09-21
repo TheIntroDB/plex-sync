@@ -271,7 +271,7 @@ writes nothing and exits non-zero rather than doing something surprising.`),
 // --- undo ------------------------------------------------------------------
 
 func newUndoCmd(g *globals) *cobra.Command {
-	var yes, dryRun bool
+	var yes, dryRun, live, plexStopped, skipSessionCheck bool
 	cmd := &cobra.Command{
 		Use:   "undo <journal>",
 		Short: "Revert the changes recorded in an undo journal",
@@ -300,8 +300,11 @@ explicitly and knowingly.`),
 			}
 			runner := sync.New(application)
 			count, err := runner.Undo(cmd.Context(), path, sync.Options{
-				Confirm: yes,
-				DryRun:  dryRun,
+				Confirm:          yes,
+				DryRun:           dryRun,
+				Live:             live,
+				PlexStopped:      plexStopped,
+				SkipSessionCheck: skipSessionCheck,
 			})
 			if err != nil {
 				if err == sync.ErrNeedsConfirmation && !dryRun {
@@ -320,6 +323,9 @@ explicitly and knowingly.`),
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm the revert")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be reverted")
+	cmd.Flags().BoolVar(&live, "live", false, "allow reverting while Plex runs and nothing is playing")
+	cmd.Flags().BoolVar(&plexStopped, "plex-stopped", false, "assert that Plex is stopped")
+	cmd.Flags().BoolVar(&skipSessionCheck, "skip-session-check", false, "skip the active session check")
 	return cmd
 }
 

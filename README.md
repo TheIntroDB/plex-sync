@@ -42,10 +42,26 @@ Intro and Skip Credits buttons appear without any local analysis.
 
 - A Plex Media Server you can reach over HTTP, with a token.
 - Read and write access to Plex's database file
-  (`com.plexapp.plugins.library.db`). Writing markers requires it: Plex has no
-  API for creating intro or credits markers.
+  (`com.plexapp.plugins.library.db`). Writing markers requires it, because Plex's
+  own marker API needs Plex Pass.
 - **TMDb metadata is recommended** for accuracy. IMDb and Tvdb ids work as a
   fallback but are less exact for TV episodes.
+
+The database is found automatically: the tool searches the platform's own
+locations (macOS, Windows, Linux packages, snaps, containers and FreeBSD) and
+uses the first one that really holds a database. `plex.database` or
+`plex.config_dir` overrides it, and so do `PLEX_DB` and `PLEX_CONFIG_DIR`.
+
+A token is required, and is read from the machine when you do not supply one:
+`.LocalAdminToken` on a modern Plex install, `Preferences.xml` on the Linux and
+Windows distributions, and the preferences plist on older macOS installs.
+
+**One caveat about Plex Pass.** Markers hang off a tag row that only Plex
+creates, and Plex only creates it when it writes a marker of its own, which is a
+Plex Pass feature. On a server whose database has never held a marker there is
+nothing to hang new markers off, and that row cannot be created from outside Plex
+(see [docs/plex-database.md](docs/plex-database.md)). A server that already has
+one marker, from Plex itself or from another tool, is fine.
 
 An API key is optional. With one, the daily allowance is higher and your own
 pending submissions are included in what you get back.
