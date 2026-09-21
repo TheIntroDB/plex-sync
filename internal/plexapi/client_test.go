@@ -739,8 +739,10 @@ func TestParseExternalIDs(t *testing.T) {
 			guids: []string{"local://123", "com.plexapp.agents.none://x", "tvdb://9"},
 			want:  model.ExternalIDs{TVDB: ptr(9)},
 		},
-		{name: "unparsable values are dropped", guids: []string{"tmdb://abc", "imdb://", ":", "://"},
-			want: model.ExternalIDs{}},
+		{
+			name: "unparsable values are dropped", guids: []string{"tmdb://abc", "imdb://", ":", "://"},
+			want: model.ExternalIDs{},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := parseExternalIDs(tc.guids)

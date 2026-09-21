@@ -10,6 +10,36 @@ permissions:
   contents: read
 
 jobs:
+  # Formatting and vetting do not depend on the platform, so they run once here
+  # rather than three times in the matrix below. The formatter is the pinned one
+  # in the Makefile, which is the same version a contributor gets from
+  # 'make tools', so this job and a local editor cannot disagree.
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Verify the module files are tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "::error::go.mod or go.sum is not tidy; run 'go mod tidy' and commit the result"
+            git --no-pager diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Install the pinned tools
+        run: make tools
+
+      - name: Formatting and go vet
+        run: make lint
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -24,29 +54,6 @@ jobs:
         with:
           go-version: '1.27'
           cache: true
-
-      - name: Verify the module files are tidy
-        shell: bash
-        run: |
-          go mod tidy
-          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
-            echo "::error::go.mod or go.sum is not tidy; run 'go mod tidy' and commit the result"
-            git --no-pager diff go.mod go.sum
-            exit 1
-          fi
-
-      - name: gofmt
-        shell: bash
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::these files are not gofmt'd:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: go vet
-        run: go vet ./...
 
       - name: Build
         run: go build ./...

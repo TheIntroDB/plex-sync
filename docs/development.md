@@ -26,19 +26,30 @@ internal/cli/               cobra commands
 ## Commands
 
 ```bash
-go build ./...
-go test ./...
-go vet ./...
-gofmt -l .
+make tools              # install the pinned formatter
+make build              # build ./bin/tidb-plex
+make test               # go test ./...
+make test-race          # ...with the race detector
+make test-live          # the tests that need a real Plex database copy
+make lint               # fmt-check + go vet
+make fmt                # format the source
 go run . --help
 go run . tui            # the interactive interface
 ```
+
+Formatting is `gofumpt`, pinned in the Makefile, and `make lint` fails when
+something is not formatted: run `make fmt` before committing. Code that is only
+gofmt'd is not enough, so an editor should be pointed at gofumpt rather than
+gofmt or the two will disagree.
+
+Import grouping is the usual one: standard library, then everything else. Order
+inside a group is gofmt's business.
 
 ## Interfaces between packages
 
 Keep these signatures stable; the tests and the TUI depend on them.
 
-### `internal/plex` (HTTP)
+### `internal/plexapi` (HTTP)
 
 ```go
 type Client struct{ ... }
@@ -57,7 +68,7 @@ func TokenFromPrefs(configDir string) string
 
 `Running` returns an error when it genuinely cannot tell; callers fail closed.
 
-### `internal/plex` (SQLite)
+### `internal/plexdb` (SQLite)
 
 ```go
 type DB struct{ ... }

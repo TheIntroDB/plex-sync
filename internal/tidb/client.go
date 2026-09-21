@@ -517,8 +517,10 @@ func (c *Client) UserStats(ctx context.Context) (map[string]any, error) {
 	case resp.Status >= 200 && resp.Status < 300:
 		var out map[string]any
 		if err := resp.JSON(&out); err != nil {
-			return nil, &Error{Kind: KindParse, Status: resp.Status,
-				Message: fmt.Sprintf("theintrodb: decode user stats: %v", err)}
+			return nil, &Error{
+				Kind: KindParse, Status: resp.Status,
+				Message: fmt.Sprintf("theintrodb: decode user stats: %v", err),
+			}
 		}
 		return out, nil
 	case resp.Status == 401 || resp.Status == 403:

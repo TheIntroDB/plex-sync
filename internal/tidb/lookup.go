@@ -352,8 +352,10 @@ func ParseSegments(body string) (model.SegmentSet, error) {
 
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(trimmed, &raw); err != nil {
-		return set, &Error{Kind: KindParse,
-			Message: fmt.Sprintf("theintrodb: decode response: %v", err)}
+		return set, &Error{
+			Kind:    KindParse,
+			Message: fmt.Sprintf("theintrodb: decode response: %v", err),
+		}
 	}
 
 	for _, t := range model.SegmentTypes {
@@ -380,14 +382,18 @@ func parseSegmentValue(raw json.RawMessage, t model.SegmentType) ([]model.Segmen
 	var entries []apiSegment
 	if trimmed[0] == '[' {
 		if err := json.Unmarshal(trimmed, &entries); err != nil {
-			return nil, &Error{Kind: KindParse,
-				Message: fmt.Sprintf("theintrodb: decode %s segment list: %v", t, err)}
+			return nil, &Error{
+				Kind:    KindParse,
+				Message: fmt.Sprintf("theintrodb: decode %s segment list: %v", t, err),
+			}
 		}
 	} else {
 		var one apiSegment
 		if err := json.Unmarshal(trimmed, &one); err != nil {
-			return nil, &Error{Kind: KindParse,
-				Message: fmt.Sprintf("theintrodb: decode %s segment: %v", t, err)}
+			return nil, &Error{
+				Kind:    KindParse,
+				Message: fmt.Sprintf("theintrodb: decode %s segment: %v", t, err),
+			}
 		}
 		entries = append(entries, one)
 	}

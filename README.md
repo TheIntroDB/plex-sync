@@ -306,9 +306,14 @@ See [docs/troubleshooting.md](docs/troubleshooting.md) for more.
 ```bash
 make build     # build ./bin/tidb-plex
 make test      # go test ./...
-make lint      # gofmt + go vet
+make test-live # the tests that need a real Plex database copy
+make lint      # gofumpt + go vet, pinned in the Makefile
+make fmt       # format the source
 make run       # build and open the terminal interface
 ```
+
+Run `make tools` once to install the pinned formatter. `make lint` fails when
+anything is not formatted.
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit together
 and [docs/development.md](docs/development.md) for the interfaces between
