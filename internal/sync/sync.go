@@ -312,14 +312,6 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 	if err != nil {
 		return err
 	}
-	tagID, err := db.MarkerTagID()
-	if err != nil {
-		// Without a marker tag there is nothing to hang new rows off. Plex
-		// creates one the first time it makes a marker of its own.
-		return fmt.Errorf(
-			"the Plex database has no marker tag yet, so markers cannot be created; "+
-				"let Plex detect one intro or credits marker first, then run again: %w", err)
-	}
 
 	if cfg.Apply.Backup && !opts.NoBackup {
 		path, err := plexdb.Backup(r.app.PlexDBPath(), cfg.BackupDir(), cfg.Apply.KeepBackups)
@@ -339,6 +331,28 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 		return err
 	}
 	res.UndoPath = journalPath
+
+	// The marker tag is resolved after the backup and after the journal, because
+	// creating it is a write like any other and has to be as reversible as the
+	// rest.
+	tagID, err := db.MarkerTagID()
+	if err != nil {
+		if !cfg.Apply.CreateMissingMarkerTag {
+			_ = journal.Close()
+			return fmt.Errorf(
+				"the Plex database has no marker tag yet, so markers cannot be created. "+
+					"Plex only creates that row when it writes a marker itself, which needs "+
+					"Plex Pass, so on a server without it the row has to be made: set "+
+					"apply.create_missing_marker_tag = true (or TIDB_PLEX_CREATE_MARKER_TAG=1) "+
+					"to let this tool create it: %w", err)
+		}
+		tagID, err = db.MarkerTagIDOrCreate(ctx, journal)
+		if err != nil {
+			_ = journal.Close()
+			return err
+		}
+		r.app.Log.Warn("created the marker tag Plex had not made", "tag_id", tagID)
+	}
 
 	stats, err := db.ApplyPlans(work, tagID, cfg.Apply.ChunkSize, journal)
 	if closeErr := journal.Close(); err == nil {
