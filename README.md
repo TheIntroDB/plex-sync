@@ -72,6 +72,63 @@ pending submissions are included in what you get back.
 
 ## Installation
 
+Pick whichever suits your machine. All of them install the same program; they
+differ in how it arrives and how it is kept up to date.
+
+- [Homebrew](#homebrew) — one command, and `brew upgrade` keeps it current
+- [Prebuilt binaries](#prebuilt-binaries) — download the archive for your platform
+- [Docker](#docker) — the container, which holds its own schedule
+- [Unraid](#unraid) — import the template into Community Applications
+- [Go](#go) — build it yourself with the Go toolchain
+
+### Homebrew
+
+```bash
+brew tap Pasithea0/tap
+brew trust --formula pasithea0/tap/plex-sync   # one-time, needed for a third-party tap
+brew install plex-sync
+```
+
+`brew upgrade` keeps it current, and installing this way also sidesteps the
+macOS quarantine problem described under prebuilt binaries: Homebrew downloads
+the archive itself, so Gatekeeper is not involved.
+
+The formula lives in [Pasithea0/tap](https://github.com/Pasithea0/tap), which
+holds my other tools too.
+
+### Prebuilt binaries
+
+Download the archive for your platform from
+[Releases](https://github.com/TheIntroDB/plex-sync/releases), check it
+against the published checksums, and put the binary on your `PATH`:
+
+```bash
+tar xzf plex-sync_0.1.0_darwin_arm64.tar.gz
+shasum -a 256 -c checksums.txt        # or sha256sum on Linux
+sudo install -m 755 plex-sync /usr/local/bin/
+```
+
+The archive also contains the README, the licence, the documentation and the
+Unraid template, so you have the matching docs for the version you installed.
+
+**macOS:** the binaries are not signed or notarised, because that needs a paid
+Apple Developer account. A binary downloaded through a browser carries macOS's
+quarantine flag, and Gatekeeper will kill it on launch — silently, with no
+output and exit code 137, which looks like a crash for no reason. Clear the flag
+once:
+
+```bash
+xattr -d com.apple.quarantine $(which plex-sync)
+```
+
+Downloading with `curl` or `git` does not set the flag, so only the browser route
+is affected, and installing with [Homebrew](#homebrew) avoids it entirely.
+`plex-sync version` printing anything at all, rather than exiting 137, means it
+is fine.
+
+Targets: Linux (amd64, arm64, armv7), macOS (amd64, arm64), Windows (amd64,
+arm64) and FreeBSD (amd64, armv7). Linux armv7 is the 32-bit Raspberry Pi build.
+
 ### Docker
 
 ```bash
@@ -120,38 +177,6 @@ second time.
 Import the template from `unraid/plex-sync.xml`, or add this repository's
 template URL to Community Applications. The template asks for the Plex URL, the
 token and the Plex database path, and defaults to a daily run.
-
-### Prebuilt binaries
-
-Download the archive for your platform from
-[Releases](https://github.com/TheIntroDB/plex-sync/releases), check it
-against the published checksums, and put the binary on your `PATH`:
-
-```bash
-tar xzf plex-sync_0.1.0_darwin_arm64.tar.gz
-shasum -a 256 -c checksums.txt        # or sha256sum on Linux
-sudo install -m 755 plex-sync /usr/local/bin/
-```
-
-The archive also contains the README, the licence, the documentation and the
-Unraid template, so you have the matching docs for the version you installed.
-
-**macOS:** the binaries are not signed or notarised, because that needs a paid
-Apple Developer account. A binary downloaded through a browser carries macOS's
-quarantine flag, and Gatekeeper will kill it on launch — silently, with no
-output and exit code 137, which looks like a crash for no reason. Clear the flag
-once:
-
-```bash
-xattr -d com.apple.quarantine $(which plex-sync)
-```
-
-Downloading with `curl` or `git` does not set the flag, so only the browser route
-is affected. `plex-sync version` printing anything at all, rather than exiting
-137, means it is fine.
-
-Targets: Linux (amd64, arm64, armv7), macOS (amd64, arm64), Windows (amd64,
-arm64) and FreeBSD (amd64, armv7). Linux armv7 is the 32-bit Raspberry Pi build.
 
 ### Go
 

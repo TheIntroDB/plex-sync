@@ -84,6 +84,16 @@ release:
   footer: |-
     ## Installing
 
+    Homebrew, on macOS or Linux:
+
+    ```bash
+    brew tap Pasithea0/tap
+    brew trust --formula pasithea0/tap/plex-sync   # one-time, third-party tap
+    brew install plex-sync
+    ```
+
+    Or take the archive for your platform:
+
     ```bash
     tar xzf plex-sync_{{ .Version }}_<os>_<arch>.tar.gz
     shasum -a 256 -c checksums.txt        # or sha256sum on Linux
