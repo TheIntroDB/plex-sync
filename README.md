@@ -9,10 +9,6 @@
 every file in your library. It is a single binary with a terminal interface and
 a scriptable command line. There is no web interface and no browser involved.
 
-It is the official Plex integration for TheIntroDB, and talks to TheIntroDB
-only. Nothing else is consulted for timings: what it writes comes from TheIntroDB
-or from your own files.
-
 ---
 
 ## What it does
