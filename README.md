@@ -124,8 +124,34 @@ token and the Plex database path, and defaults to a daily run.
 ### Prebuilt binaries
 
 Download the archive for your platform from
-[Releases](https://github.com/TheIntroDB/plex-integration/releases) and put the
-binary on your `PATH`.
+[Releases](https://github.com/TheIntroDB/plex-integration/releases), check it
+against the published checksums, and put the binary on your `PATH`:
+
+```bash
+tar xzf tidb-plex_0.1.0_darwin_arm64.tar.gz
+shasum -a 256 -c checksums.txt        # or sha256sum on Linux
+sudo install -m 755 tidb-plex /usr/local/bin/
+```
+
+The archive also contains the README, the licence, the documentation and the
+Unraid template, so you have the matching docs for the version you installed.
+
+**macOS:** the binaries are not signed or notarised, because that needs a paid
+Apple Developer account. A binary downloaded through a browser carries macOS's
+quarantine flag, and Gatekeeper will kill it on launch — silently, with no
+output and exit code 137, which looks like a crash for no reason. Clear the flag
+once:
+
+```bash
+xattr -d com.apple.quarantine $(which tidb-plex)
+```
+
+Downloading with `curl` or `git` does not set the flag, so only the browser route
+is affected. `tidb-plex version` printing anything at all, rather than exiting
+137, means it is fine.
+
+Targets: Linux (amd64, arm64, armv7), macOS (amd64, arm64), Windows (amd64,
+arm64) and FreeBSD (amd64, armv7). Linux armv7 is the 32-bit Raspberry Pi build.
 
 ### Go
 

@@ -36,16 +36,13 @@ builds:
     goarm:
       - '7'
     ignore:
-      # Windows on ARM is built as arm64; Windows on 32-bit ARM is not a target.
+      # Windows on ARM is built as arm64; 32-bit Windows ARM is not a target.
       - goos: windows
         goarch: arm
       - goos: freebsd
         goarch: arm64
       - goos: darwin
         goarch: arm
-      - goos: linux
-        goarch: arm
-        goarm: ''
 
 archives:
   - id: default
@@ -84,7 +81,32 @@ changelog:
 
 release:
   draft: true
-  footer: |
+  footer: |-
+    ## Installing
+
+    ```bash
+    tar xzf tidb-plex_{{ .Version }}_<os>_<arch>.tar.gz
+    shasum -a 256 -c checksums.txt        # or sha256sum on Linux
+    sudo install -m 755 tidb-plex /usr/local/bin/
+    ```
+
+    Targets: `linux_amd64` `linux_arm64` `linux_arm` (32-bit Raspberry Pi)
+    `darwin_amd64` `darwin_arm64` `windows_amd64` `windows_arm64`
+    `freebsd_amd64` `freebsd_arm`.
+
+    ## macOS
+
+    These binaries are not signed or notarised. If you downloaded one through a
+    browser, macOS quarantines it and Gatekeeper kills it on launch: no output,
+    exit code 137, which looks like a crash for no reason. Clear the flag once:
+
+    ```bash
+    xattr -d com.apple.quarantine $(which tidb-plex)
+    ```
+
+    `curl` does not set the flag. `tidb-plex version` printing a version, rather
+    than exiting 137, means it is fine.
+
     ## Container image
 
     ```

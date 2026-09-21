@@ -1,0 +1,107 @@
+name: Release
+
+# Tagging is the release. Push a tag and this builds every target, checksums the
+# archives and opens a draft release with the changelog goreleaser derives from
+# the commits since the last tag.
+#
+#   git tag -a v0.1.0 -m "v0.1.0"
+#   git push origin v0.1.0
+#
+# The release is a draft, so nothing is public until it is published by hand.
+#
+# To rehearse the whole thing without publishing anything, run this workflow
+# manually with "snapshot" ticked: it builds and checksums the same artifacts
+# and uploads them as a workflow artifact instead of creating a release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: Build the artifacts without creating a release
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      # The full history is needed: goreleaser works out the changelog from the
+      # commits since the previous tag.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      # A tag can be pushed to a commit that never went through CI, because CI
+      # runs on branch pushes. Nothing is published without the tests passing.
+      - name: Test
+        run: go test -race -count=1 ./...
+
+      - name: Verify the module files are tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "::error::go.mod or go.sum is not tidy; run 'go mod tidy' and commit the result"
+            exit 1
+          fi
+
+      - name: Check the release configuration
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: check
+
+      - name: Build and publish
+        if: github.event_name == 'push'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The rehearsal. Runs on a manual trigger, and on any tag with a suffix
+      # that marks it as not-for-release, so a mistyped tag cannot publish.
+      - name: Build without publishing
+        if: github.event_name != 'push' || inputs.snapshot
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --snapshot --skip=publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep the artifacts
+        if: github.event_name != 'push' || inputs.snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: tidb-plex-snapshot
+          path: dist/*
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Summarise
+        run: |
+          echo "### Artifacts" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -1 dist/ 2>/dev/null | sed 's/^/  /' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f dist/checksums.txt ]; then
+            echo >> "$GITHUB_STEP_SUMMARY"
+            echo "Checksums written to dist/checksums.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
