@@ -712,7 +712,18 @@ func DiscoverPlexDir() string {
 	if v := strings.TrimSpace(os.Getenv("PLEX_CONFIG_DIR")); v != "" && plexDatabaseIn(v) {
 		return v
 	}
-	for _, dir := range PlatformPlexDirs() {
+	return findPlexDir(PlatformPlexDirs())
+}
+
+// findPlexDir returns the first candidate that really holds a database.
+//
+// The candidate list is a parameter so the search can be tested against each
+// platform's list on any machine. Discovery itself is the platform's list, but
+// the part that decides whether a directory counts must not depend on the host
+// it was compiled for: that is how a test that only ever ran on macOS came to
+// pass while failing on the two platforms in CI.
+func findPlexDir(candidates []string) string {
+	for _, dir := range candidates {
 		if plexDatabaseIn(dir) {
 			return dir
 		}

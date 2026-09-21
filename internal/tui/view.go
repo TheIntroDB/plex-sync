@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/TheIntroDB/plex-sync/internal/buildinfo"
 	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
@@ -53,11 +54,29 @@ func (m *Model) header() string {
 			tabs = append(tabs, styleTabIdle.Render(label))
 		}
 	}
-	title := styleTitle.Render("TheIntroDB for Plex")
+	title := styleTitle.Render("TheIntroDB for Plex") + "  " + styleDim.Render(shortVersion())
 	if m.busy != "" {
 		title += "  " + styleDim.Render("("+m.busy+")")
 	}
 	return title + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, tabs...) + "\n"
+}
+
+// shortVersion is the version shown in the header.
+//
+// A build with nothing injected says so rather than showing a version it does
+// not have: 'dev build' is the honest thing to put on a binary compiled by hand,
+// and it is what tells someone that what they are looking at is not a release.
+// The full line, with the commit and the toolchain, stays on `plex-sync version`.
+func shortVersion() string {
+	v := strings.TrimSpace(buildinfo.Version)
+	switch {
+	case v == "", v == "dev":
+		return "dev build"
+	case strings.HasPrefix(v, "v"):
+		return v
+	default:
+		return "v" + v
+	}
 }
 
 func (m *Model) body() string {

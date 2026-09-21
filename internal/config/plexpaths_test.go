@@ -95,9 +95,72 @@ func TestPlexDirsOnWindowsWithoutLocalAppData(t *testing.T) {
 // The whole point of discovery is that the user does not have to configure
 // anything, so a machine with Plex in the platform's default place must be found
 // without help.
-func TestDiscoverPlexDirFindsTheRealLayout(t *testing.T) {
-	home := t.TempDir()
-	dir := filepath.Join(home, "Library", "Application Support", "Plex Media Server")
+//
+// Each platform's own list is used, built here from a fake environment, so this
+// runs the same way on every host. The first version of this test built a macOS
+// directory and hoped the platform list would contain it, which passed on macOS
+// and failed on Linux and Windows in CI.
+//
+// Linux is not in the loop because its candidates are absolute paths that a test
+// cannot create a database under; its list is covered by
+// TestPlexDirsForEveryPlatform, and the search itself is the same code for every
+// platform.
+func TestDiscoveryFindsPlexInEachPlatformsOwnPlace(t *testing.T) {
+	for _, tc := range []struct {
+		goos string
+		env  map[string]string
+	}{
+		{
+			goos: "darwin",
+			env:  map[string]string{"HOME": "/users/someone"},
+		},
+		{
+			goos: "windows",
+			env:  map[string]string{"LOCALAPPDATA": `C:\Users\someone\AppData\Local`},
+		},
+	} {
+		t.Run(tc.goos, func(t *testing.T) {
+			home := t.TempDir()
+			// Whatever the list asks the environment for, answer with a real
+			// directory, so the candidates point at somewhere writable.
+			env := func(key string) string {
+				if _, ok := tc.env[key]; ok {
+					return home
+				}
+				return ""
+			}
+
+			candidates := plexDirsForOS(tc.goos, env)
+			if len(candidates) == 0 {
+				t.Fatalf("%s produced no candidate directories", tc.goos)
+			}
+
+			// Nothing is there yet.
+			if got := findPlexDir(candidates); got != "" {
+				t.Fatalf("found %q in an empty temporary directory", got)
+			}
+
+			// Put a database where that platform keeps one: the first candidate
+			// is the documented location.
+			want := candidates[0]
+			if err := os.MkdirAll(filepath.Join(want, "Plug-in Support", "Databases"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(want, PlexDBSubpath), []byte("not a real database"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := findPlexDir(candidates); got != want {
+				t.Errorf("found %q, want %q for %s", got, want, tc.goos)
+			}
+		})
+	}
+}
+
+// A directory named by the override is found even when the platform's own list
+// knows nothing about it, which is what makes an unusual install work.
+func TestDiscoveryHonoursTheOverrideOnAnyPlatform(t *testing.T) {
+	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "Plug-in Support", "Databases"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -105,12 +168,30 @@ func TestDiscoverPlexDirFindsTheRealLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Force the macOS candidate list, whatever platform this test runs on.
-	t.Setenv("PLEX_CONFIG_DIR", "")
-	t.Setenv("HOME", home)
+	t.Setenv("PLEX_CONFIG_DIR", dir)
+	if got := DiscoverPlexDir(); got != dir {
+		t.Errorf("DiscoverPlexDir = %q, want the override %q", got, dir)
+	}
+}
 
-	if got := DiscoverPlexDir(); got == "" {
-		t.Fatalf("nothing found; the macOS candidate list is %v", PlatformPlexDirs())
+// A candidate that has the database directory but no database in it is not
+// accepted: Plex creates the directory before it has anything to put in it.
+func TestACandidateWithoutADatabaseIsNotAccepted(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "Plug-in Support", "Databases"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := findPlexDir([]string{dir}); got != "" {
+		t.Errorf("found %q, want nothing: the directory is empty", got)
+	}
+
+	// And a candidate that is a directory where the database should be is not a
+	// database.
+	if err := os.MkdirAll(filepath.Join(dir, PlexDBSubpath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := findPlexDir([]string{dir}); got != "" {
+		t.Errorf("found %q, want nothing: that is a directory, not a file", got)
 	}
 }
 
