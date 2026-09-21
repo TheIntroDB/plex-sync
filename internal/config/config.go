@@ -250,6 +250,10 @@ func (t TheIntroDB) MinDelay() float64 {
 // per UTC day, against 1000 for an account.
 const AnonymousDailyBudget = 500
 
+// AccountDailyBudget is the allowance with an API key, and the highest any
+// caller can have.
+const AccountDailyBudget = 1000
+
 // EffectiveDailyBudget is the allowance that actually applies.
 //
 // Budgeting for 1000 requests when only 500 are allowed means discovering the
@@ -611,6 +615,15 @@ func (c *Config) Validate() error {
 
 	if c.TheIntroDB.DailyBudget <= 0 {
 		problems = append(problems, "theintrodb.daily_budget must be positive")
+	}
+	// An account allowance of 1000 is the highest anyone can have, so a bigger
+	// number is not a bigger budget, it is a number that cannot be true. Left
+	// unchecked it would sit in the file looking like an allowance nobody will
+	// honour.
+	if c.TheIntroDB.DailyBudget > AccountDailyBudget {
+		problems = append(problems, fmt.Sprintf(
+			"theintrodb.daily_budget must not exceed the ceiling of %d requests a day",
+			AccountDailyBudget))
 	}
 	if c.TheIntroDB.MaxPerWindow > 30 {
 		problems = append(problems,

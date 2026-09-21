@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -295,40 +294,72 @@ func (m *Model) settingsScreen() string {
 	cfg := m.app.Cfg
 	path := cfg.Path
 	if path == "" {
-		path = "(defaults, environment and flags)"
+		path = "(not written yet)"
 	}
+
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("Configuration") + "\n\n")
-	b.WriteString(fmt.Sprintf("  file            %s\n", path))
-	b.WriteString(fmt.Sprintf("  state directory %s\n", cfg.StateDir))
-	b.WriteString(fmt.Sprintf("  Plex            %s\n", cfg.Plex.URL))
-	b.WriteString(fmt.Sprintf("  token           %s\n", setOrNot(cfg.Plex.Token != "")))
-	b.WriteString(fmt.Sprintf("  database        %s\n", orUnknown(cfg.Plex.ResolvedDatabase(), "not configured")))
-	b.WriteString(fmt.Sprintf("  TheIntroDB      %s\n", cfg.TheIntroDB.BaseURL))
-	b.WriteString(fmt.Sprintf("  api key         %s\n", setOrNot(cfg.TheIntroDB.APIKey != "")))
-	b.WriteString(fmt.Sprintf("  daily budget    %d requests, %.2f s apart\n",
-		cfg.TheIntroDB.EffectiveDailyBudget(), cfg.TheIntroDB.MinDelay()))
+	b.WriteString(styleTitle.Render("Plex") + "\n")
+	b.WriteString(fmt.Sprintf("  database found  %s\n", styleDim.Render(
+		orUnknown(m.app.PlexDBPath(), "not configured"))))
 
-	b.WriteString("\n" + styleTitle.Render("Segments") + "\n")
-	for _, kind := range []string{"intro", "recap", "credits", "preview"} {
-		state := "do not write"
-		if cfg.Segments.Enabled(kind) {
-			state = "write"
+	rows := settingsRows()
+	section := ""
+	for i, row := range rows {
+		if row.section != section {
+			section = row.section
+			b.WriteString("\n" + styleTitle.Render(section) + "\n")
 		}
-		b.WriteString(fmt.Sprintf("  %-8s %s\n", kind, state))
+
+		// The cursor is a marker rather than only a style, so it survives
+		// being read in a terminal that has no colour.
+		marker := "  "
+		label := fmt.Sprintf("%-20s", row.label)
+		value := row.display(cfg)
+
+		if i == m.cursor {
+			marker = styleKey.Render("> ")
+			if m.editing {
+				value = m.editingValue()
+			}
+			label = lipgloss.NewStyle().Bold(true).Render(label)
+		}
+		b.WriteString(fmt.Sprintf("%s%s %s\n", marker, label, value))
 	}
-	b.WriteString(fmt.Sprintf("  recap folds into %s, preview folds into %s\n",
-		fold(cfg.Segments.MapRecap, "intro"), fold(cfg.Segments.MapPreview, "credits")))
 
-	b.WriteString("\n" + styleTitle.Render("Writing") + "\n")
-	b.WriteString(fmt.Sprintf("  policy          %s\n", cfg.Apply.Policy))
-	b.WriteString(fmt.Sprintf("  backup          %s, keeping %d\n", yesNo(cfg.Apply.Backup), cfg.Apply.KeepBackups))
-	b.WriteString(fmt.Sprintf("  allow live      %s\n", yesNo(cfg.Apply.AllowLive)))
-	b.WriteString(fmt.Sprintf("  PAL guard       %s\n", yesNo(cfg.Apply.PALGuard)))
-	b.WriteString(fmt.Sprintf("  chunk size      %d item(s) per transaction\n", cfg.Apply.ChunkSize))
-
-	b.WriteString("\n" + styleDim.Render("Edit the file above, or use environment variables, then restart.") + "\n")
+	b.WriteString("\n")
+	if m.cursor < len(rows) {
+		b.WriteString(styleDim.Render("  "+wrapHelp(rows[m.cursor])) + "\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(styleDim.Render("  up/down move") + "   " +
+		styleDim.Render("enter change") + "   " +
+		styleDim.Render("esc cancel") + "\n")
+	b.WriteString(styleDim.Render("  file: "+path) + "\n")
+	if cfg.Path == "" {
+		b.WriteString(styleDim.Render("  nothing is on disk yet; the first change writes it") + "\n")
+	}
 	return b.String()
+}
+
+// editingValue renders the input line, with a block where the next character
+// would go.
+func (m *Model) editingValue() string {
+	return m.buffer + styleKey.Render("▌")
+}
+
+// wrapHelp keeps the help line to one line, since the footer below it is fixed
+// and a wrapped line would push the screen around as the cursor moves.
+func wrapHelp(row setting) string {
+	const width = 96
+	text := row.help
+	if len(text) <= width {
+		return text
+	}
+	cut := strings.LastIndex(text[:width], " ")
+	if cut <= 0 {
+		cut = width
+	}
+	return text[:cut] + "..."
 }
 
 // --- chrome ----------------------------------------------------------------
@@ -459,25 +490,9 @@ func orUnknown(value, fallback string) string {
 	return value
 }
 
-func setOrNot(present bool) string {
-	if present {
-		return "set, hidden"
-	}
-	return "not set"
-}
-
 func yesNo(value bool) string {
 	if value {
 		return "yes"
 	}
 	return "no"
 }
-
-func fold(enabled bool, target string) string {
-	if !enabled {
-		return "nothing"
-	}
-	return target
-}
-
-var _ = time.Now

@@ -92,6 +92,20 @@ type Model struct {
 
 	// listOffset scrolls the library and plan lists.
 	listOffset int
+
+	// pending counts the loads the current busy stage is waiting for, and busy
+	// names that stage. A refresh is two loads (the ledger and the services),
+	// everything else is one, so clearing the stage on whichever result arrived
+	// first would stop saying "refreshing" while half of it was still running.
+	pending int
+
+	// cursor is the selected row on the settings screen.
+	cursor int
+	// editing is true while a setting's value is being typed. The keyboard
+	// belongs to it while it is set, so a key like q types rather than quits.
+	editing bool
+	// buffer holds what has been typed so far.
+	buffer string
 }
 
 func newModel(ctx context.Context, opts Options) *Model {
@@ -257,22 +271,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setError(fmt.Errorf("Plex did not answer: %s", readiness.PlexError))
 		} else if !readiness.TIDBOK {
 			m.setError(fmt.Errorf("TheIntroDB did not answer: %s", readiness.TIDBError))
-		} else {
+		} else if m.status == "loading" {
+			// Only on the way in. Reporting "ready" after a refresh would
+			// overwrite the result of whatever the refresh was for.
 			m.setStatus("ready")
 		}
+		m.finishLoad()
 		return m, nil
 
 	case statsMsg:
 		m.stats = msg.stats
 		m.runs = msg.runs
 		m.usage = msg.usage
-		if m.busy == "" {
-			m.setStatus("refreshed")
-		}
+		m.finishLoad()
 		return m, nil
 
 	case inventoryMsg:
-		m.busy = ""
+		m.finishLoad()
 		if msg.err != nil {
 			m.setError(msg.err)
 			return m, nil
@@ -286,9 +301,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case planMsg:
-		m.busy = ""
+		m.finishLoad()
 		if msg.err != nil {
 			m.setError(msg.err)
+			return m, nil
+		}
+		if msg.result == nil {
+			// Nothing to show and nothing to explain it. Refusing is better
+			// than a crash in the draw loop.
+			m.setError(fmt.Errorf("planning returned nothing"))
 			return m, nil
 		}
 		m.result = msg.result
@@ -298,7 +319,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadStatus()
 
 	case applyMsg:
-		m.busy = ""
+		m.finishLoad()
 		if msg.err != nil {
 			m.setError(msg.err)
 			return m, m.loadStatus()
@@ -312,7 +333,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadStatus()
 
 	case undoMsg:
-		m.busy = ""
+		m.finishLoad()
 		if msg.err != nil {
 			m.setError(msg.err)
 			return m, m.loadStatus()
@@ -323,7 +344,48 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// startLoad marks a stage busy and records how many results it will produce.
+func (m *Model) startLoad(stage string, loads int) {
+	m.busy = stage
+	m.pending = loads
+}
+
+// finishLoad records that one of a stage's loads has come back, and clears the
+// stage once they all have.
+//
+// Results are not tagged with the stage that started them, so a result arriving
+// for a stage that has already ended is counted against whatever is running now.
+// The cost is that the header can stop saying "running" slightly early; nothing
+// else is lost, because a message still reports its own outcome either way. That
+// is worth the alternative, threading a stage token through every message, which
+// would be more machinery than an indicator deserves.
+func (m *Model) finishLoad() {
+	if m.busy == "" || m.pending <= 0 {
+		return
+	}
+	m.pending--
+	if m.pending > 0 {
+		return
+	}
+
+	stage := m.busy
+	m.busy = ""
+
+	// Only claim success when the stage actually succeeded. setStatus clears any
+	// error, so announcing "refreshed" after a failed check would wipe the
+	// reason it failed and leave a service that is down looking fine.
+	if stage == "refreshing" && m.err == nil {
+		m.setStatus("refreshed")
+	}
+}
+
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Typing into a setting takes the whole keyboard, exactly as a confirmation
+	// does: "q" has to type a q rather than quit, and "1" has to type a 1.
+	if m.editing {
+		return m.handleEditKey(msg)
+	}
+
 	// A confirmation takes the whole keyboard, so a stray key cannot cause a
 	// write.
 	if m.confirmApply || m.confirmUndo {
@@ -331,18 +393,42 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "y", "enter":
 			if m.confirmApply {
 				m.confirmApply = false
-				m.busy = "writing"
+				m.startLoad("writing", 1)
 				m.setStatus("writing markers...")
 				return m, m.runApply()
 			}
 			m.confirmUndo = false
-			m.busy = "reverting"
+			m.startLoad("reverting", 1)
 			m.setStatus("reverting...")
 			return m, m.runUndo()
 		default:
 			m.confirmApply = false
 			m.confirmUndo = false
 			m.setStatus("cancelled")
+			return m, nil
+		}
+	}
+
+	// On the settings screen the arrow keys move the selection rather than
+	// scrolling, because every row is something you can act on.
+	if m.screen == screenSettings {
+		switch msg.String() {
+		case "up", "k":
+			m.moveCursor(-1)
+			return m, nil
+		case "down", "j":
+			m.moveCursor(1)
+			return m, nil
+		case "home", "g":
+			m.cursor = 0
+			return m, nil
+		case "end":
+			m.cursor = len(settingsRows()) - 1
+			return m, nil
+		case "enter", " ":
+			return m.activateSetting()
+		case "esc":
+			m.setStatus("")
 			return m, nil
 		}
 	}
@@ -364,15 +450,17 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.listOffset = 0
 		return m, nil
 	case "r":
-		m.busy = "refreshing"
+		// Two loads: the ledger and the services. Both have to come back
+		// before the stage is over.
+		m.startLoad("refreshing", 2)
 		return m, tea.Batch(m.loadStatus(), m.loadReadiness())
 	case "l":
-		m.busy = "reading the library"
+		m.startLoad("reading the library", 1)
 		m.screen = screenLibrary
 		m.setStatus("reading the library...")
 		return m, m.loadInventory()
 	case "p":
-		m.busy = "planning"
+		m.startLoad("planning", 1)
 		m.setStatus("planning: this makes one lookup per item, so it can take a while")
 		return m, m.runPlan()
 	case "a":
@@ -406,7 +494,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.listOffset = 0
 		return m, nil
 	case "?":
-		m.setStatus("1-5 screens, tab next, r refresh, l library, p plan, a apply, u undo, q quit")
+		m.setStatus("1-5 screens, tab next, r refresh, l library, p plan, a apply, u undo, " +
+			"on Settings: up/down move, enter change, q quit")
 		return m, nil
 	}
 	return m, nil
