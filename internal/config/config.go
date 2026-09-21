@@ -479,18 +479,43 @@ func (c *Config) TempDir() string {
 
 // CandidatePaths lists config file locations, most specific first.
 func CandidatePaths() []string {
+	cwd, _ := os.Getwd()
+	userConfigDir, _ := os.UserConfigDir()
+	return candidatePaths(runtime.GOOS, os.Getenv(EnvConfig), cwd, userConfigDir,
+		os.Getenv("ProgramData"))
+}
+
+// candidatePaths takes what it needs as arguments so that every platform's
+// ordering can be checked on any machine, rather than only the one running the
+// test.
+func candidatePaths(goos, explicit, cwd, userConfigDir, programData string) []string {
 	var out []string
-	if v := strings.TrimSpace(os.Getenv(EnvConfig)); v != "" {
+	if v := strings.TrimSpace(explicit); v != "" {
 		out = append(out, v)
 	}
-	if cwd, err := os.Getwd(); err == nil {
+	if cwd != "" {
 		out = append(out, filepath.Join(cwd, "plex-sync.toml"))
 	}
-	if dir, err := os.UserConfigDir(); err == nil {
-		out = append(out, filepath.Join(dir, "plex-sync", "config.toml"))
+	if userConfigDir != "" {
+		out = append(out, filepath.Join(userConfigDir, "plex-sync", "config.toml"))
 	}
-	out = append(out, "/etc/plex-sync/config.toml")
+	out = append(out, systemWideConfigPath(goos, programData))
 	return out
+}
+
+// systemWideConfigPath is where a config installed for every user would live.
+//
+// It follows the platform: /etc on unix, and ProgramData on Windows, where /etc
+// is not a path anything uses. A Windows service install looking for its config
+// in /etc would never find it.
+func systemWideConfigPath(goos, programData string) string {
+	if goos == "windows" {
+		if strings.TrimSpace(programData) == "" {
+			programData = `C:\ProgramData`
+		}
+		return filepath.Join(programData, "plex-sync", "config.toml")
+	}
+	return "/etc/plex-sync/config.toml"
 }
 
 // FindFile returns the first config file that exists, or "".
@@ -733,6 +758,49 @@ func findPlexDir(candidates []string) string {
 
 // Example returns a commented config file body, for `config init`.
 func Example() string {
+	return exampleConfig(defaultStateDir())
+}
+
+// tomlString renders a value as a TOML basic string, quoted and escaped.
+//
+// A path cannot be dropped into a quoted TOML string as it stands. On Windows a
+// path such as C:\Users\someone\AppData\Local holds \U, which TOML reads as the
+// start of a unicode escape, so the file the tool wrote could not be read back:
+// 'config init' produced a configuration that failed to load, on Windows only.
+func tomlString(value string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range value {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '	':
+			b.WriteString(`	`)
+		default:
+			// TOML forbids raw control characters in a basic string.
+			if r < 0x20 || r == 0x7f {
+				fmt.Fprintf(&b, `\u%04X`, r)
+				continue
+			}
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// exampleConfig is the file body for a given state directory.
+//
+// The state directory is a parameter rather than read inside, so the escaping
+// above can be tested with a Windows path on any machine. Testing it only with
+// the host's own path is what let the Windows bug through.
+func exampleConfig(stateDir string) string {
 	return `# plex-sync configuration.
 # Every value here is optional; the defaults shown are the built-in ones.
 # Environment variables override this file (PLEX_URL, PLEX_TOKEN, PLEX_DB,
@@ -740,7 +808,7 @@ func Example() string {
 
 # Top-level keys must come before the first section header, or TOML reads them
 # as part of that section.
-state_dir = "` + defaultStateDir() + `"
+state_dir = ` + tomlString(stateDir) + `
 log_level = "info"
 
 [plex]

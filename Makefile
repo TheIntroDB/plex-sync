@@ -45,6 +45,33 @@ test-race: ## Run all tests with the race detector
 test-live: ## Run the tests that need a copy of a real Plex database
 	./scripts/live-e2e.sh
 
+# The platforms CI runs are not interchangeable, and the tests have twice been
+# green here while failing there: macOS passed while Linux and Windows failed,
+# then macOS and Linux passed while Windows failed. These two targets check the
+# other platforms from this one, so a red CI run is not the first news.
+#
+# test-linux runs the tests on Linux, which is the real thing on a Mac.
+# vet-other only compiles the others, since there is no way to run Windows here,
+# but that still catches a test that does not build on a platform, and it is the
+# reason the windows-only test failure could have been seen before pushing.
+DOCKER   ?= docker
+GOIMAGE  ?= golang:1.27
+
+.PHONY: test-linux
+test-linux: ## Run the whole test suite on Linux, in a container
+	$(DOCKER) run --rm -v "$(CURDIR)":/src -w /src -e CGO_ENABLED=0 \
+		$(GOIMAGE) go test -count=1 ./...
+
+.PHONY: vet-other
+vet-other: ## Compile-check every released platform, test files included
+	@set -e; \
+	for target in windows/amd64 windows/arm64 darwin/arm64 freebsd/amd64 linux/arm; do \
+		printf '  %-16s' "$$target"; \
+		GOOS=$${target%%/*} GOARCH=$${target##*/} CGO_ENABLED=0 go vet ./... ; \
+		echo "ok"; \
+	done; \
+	echo "every released platform compiles"
+
 .PHONY: cover
 cover: ## Run tests and write coverage.html
 	go test -coverprofile=coverage.out ./...

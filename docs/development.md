@@ -26,15 +26,17 @@ internal/cli/               cobra commands
 ## Commands
 
 ```bash
-make tools              # install the pinned formatter
-make build              # build ./bin/plex-sync
-make test               # go test ./...
-make test-race          # ...with the race detector
-make test-live          # the tests that need a real Plex database copy
-make lint               # fmt-check + go vet
-make fmt                # format the source
+make tools        # install the pinned formatter
+make build        # build ./bin/plex-sync
+make test         # go test ./...
+make test-race    # ...with the race detector
+make test-live    # the tests that need a real Plex database copy
+make test-linux   # the whole suite on Linux, in a container
+make vet-other    # every released platform compiles, test files included
+make lint         # fmt-check + go vet
+make fmt          # format the source
 go run . --help
-go run . tui            # the interactive interface
+go run . tui      # the interactive interface
 ```
 
 Formatting is `gofumpt`, pinned in the Makefile, and `make lint` fails when
@@ -159,6 +161,33 @@ matching maths is covered even where no media is available.
   builds a real Plex schema in a temporary directory from the statements Plex
   itself uses, and the write tests copy that first, so nothing is shared between
   tests and nothing is left behind.
+
+### The other platforms
+
+CI runs the tests on Linux, macOS and Windows, and they are not interchangeable.
+Twice now the suite has been green on the machine it was written on and red in
+CI: first macOS passing while Linux and Windows failed, then both passing while
+Windows failed. Waiting for CI to say so costs a cycle every time, so:
+
+```bash
+make test-linux    # the whole suite on Linux, in a container
+make vet-other     # every released platform compiles, test files included
+```
+
+`test-linux` runs the tests for real. `vet-other` only compiles the others —
+Windows cannot be run here — but that is not nothing: it catches a test that does
+not build for a platform, which is how a Windows-only failure could have been
+seen before pushing.
+
+Neither replaces running CI. They are the checks worth doing before pushing, not
+after.
+
+A rule that came out of this: do not write a test whose result depends on the
+machine it runs on. The specific mistakes were a test that built a macOS-shaped
+directory and assumed the platform's candidate list would contain it, one that
+used a Unix absolute path with a string prefix check, and one that asserted POSIX
+file modes. Any of those can be written to pass everywhere by passing the
+platform, the environment or a real temporary path in.
 
 ### Tests against real data
 

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -283,16 +284,26 @@ func TestExampleConfigIsValid(t *testing.T) {
 }
 
 func TestStatePathsLiveUnderTheStateDirectory(t *testing.T) {
+	// A real path under a temporary directory, not a Unix-looking literal: on
+	// Windows "/var/lib/..." becomes "\var\lib\..." and a string prefix check
+	// against the original then reports an escape that never happened.
+	base := filepath.Join(t.TempDir(), "state")
 	cfg := Default()
-	cfg.StateDir = "/var/lib/plex-sync"
+	cfg.StateDir = base
+
 	for name, got := range map[string]string{
 		"ledger":      cfg.LedgerPath(),
 		"backups":     cfg.BackupDir(),
 		"undo":        cfg.UndoDir(),
 		"fingerprint": cfg.FingerprintDir(),
 	} {
-		if !strings.HasPrefix(got, "/var/lib/plex-sync") {
-			t.Errorf("%s path %q escaped the state directory", name, got)
+		rel, err := filepath.Rel(base, got)
+		if err != nil {
+			t.Errorf("%s path %q is not comparable with the state directory: %v", name, got, err)
+			continue
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			t.Errorf("%s path %q escaped the state directory %q", name, got, base)
 		}
 	}
 }
@@ -323,7 +334,77 @@ func TestCandidatePathsAreOrderedMostSpecificFirst(t *testing.T) {
 	if !strings.Contains(joined, want) {
 		t.Errorf("candidate paths %v do not include %q", paths, want)
 	}
-	if !strings.Contains(joined, filepath.Join(string(filepath.Separator), "etc", "plex-sync", "config.toml")) {
-		t.Error("a system-wide location must be considered for service installs")
+
+	// The system-wide location follows the platform, so this checks the host's
+	// own rather than assuming /etc: on Windows it is under ProgramData, and a
+	// service install there would never look in /etc.
+	systemWide := systemWideConfigPath(runtime.GOOS, os.Getenv("ProgramData"))
+	if !strings.Contains(joined, systemWide) {
+		t.Errorf("candidate paths %v do not include the system-wide %q", paths, systemWide)
+	}
+}
+
+// The system-wide location is the platform's own, which is worth pinning because
+// the wrong one is silently useless rather than wrong-looking.
+func TestTheSystemWideLocationFollowsThePlatform(t *testing.T) {
+	unix := systemWideConfigPath("linux", "")
+	if unix != "/etc/plex-sync/config.toml" {
+		t.Errorf("linux system-wide path = %q", unix)
+	}
+	if got := systemWideConfigPath("darwin", ""); got != unix {
+		t.Errorf("darwin system-wide path = %q, want the same as linux", got)
+	}
+
+	windows := systemWideConfigPath("windows", `C:\ProgramData`)
+	if strings.HasPrefix(windows, "/etc") {
+		t.Errorf("windows system-wide path = %q, want it nowhere near /etc", windows)
+	}
+	if !strings.Contains(windows, "plex-sync") {
+		t.Errorf("windows system-wide path = %q, want it to name the tool", windows)
+	}
+
+	// With no ProgramData in the environment it still has to produce somewhere,
+	// since the variable is not always set.
+	if got := systemWideConfigPath("windows", ""); !strings.Contains(got, "plex-sync") {
+		t.Errorf("windows system-wide path with no ProgramData = %q", got)
+	}
+}
+
+// Every platform's ordering is checked from any host, including that the
+// system-wide location comes last.
+func TestCandidateOrderingOnEveryPlatform(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			paths := candidatePaths(goos, "/explicit.toml", "/work", "/config-home", `C:\ProgramData`)
+			if len(paths) < 4 {
+				t.Fatalf("%s produced %d candidates, want the explicit, the working directory, the user and the system-wide", goos, len(paths))
+			}
+			if paths[0] != "/explicit.toml" {
+				t.Errorf("%s: first candidate = %q, want the explicit value", goos, paths[0])
+			}
+			if !strings.Contains(paths[1], "plex-sync.toml") {
+				t.Errorf("%s: second candidate = %q, want the working directory", goos, paths[1])
+			}
+			if !strings.Contains(paths[2], "config.toml") {
+				t.Errorf("%s: third candidate = %q, want the user's own", goos, paths[2])
+			}
+			if paths[len(paths)-1] != systemWideConfigPath(goos, `C:\ProgramData`) {
+				t.Errorf("%s: last candidate = %q, want the system-wide one", goos, paths[len(paths)-1])
+			}
+		})
+	}
+}
+
+// With nothing set there is still somewhere to look, because a first run has no
+// environment and no configuration.
+func TestCandidatePathsAlwaysHaveSomewhereToLook(t *testing.T) {
+	paths := candidatePaths("linux", "", "", "", "")
+	if len(paths) == 0 {
+		t.Fatal("no candidates at all")
+	}
+	for _, p := range paths {
+		if strings.TrimSpace(p) == "" {
+			t.Errorf("an empty candidate is in %v", paths)
+		}
 	}
 }

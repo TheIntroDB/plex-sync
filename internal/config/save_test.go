@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,13 @@ func TestSaveRoundTrips(t *testing.T) {
 // The file can hold an API key and a Plex token, so it must not be readable by
 // everyone on the machine.
 func TestSaveIsNotWorldReadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows has no POSIX modes: os.Chmod there only toggles the read-only
+		// attribute, and a file created in the user's own profile is already
+		// limited by the directory's ACLs. There is nothing portable to assert.
+		t.Skip("file modes are not a Windows concept")
+	}
+
 	path := filepath.Join(t.TempDir(), "config.toml")
 	cfg := Default()
 	cfg.TheIntroDB.APIKey = "secret"
