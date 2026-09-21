@@ -122,15 +122,15 @@ Things that are implemented and unit-tested but have never met the real world.
       playing.
 - [x] ~~**Scheduler examples**~~ `docs/scheduling.md` covers systemd, launchd,
       Task Scheduler, cron and the container.
-- [ ] **Container image publishing**, and a plan/apply observed end to end
-      inside the container. The image builds and runs (`docker build`, 30.4 MB,
-      distroless, no CGO), but a marker write has not been watched happen in it:
-      planning needs the Plex HTTP API, so the container has to reach a real
-      server, and the guard refuses to write while anything is playing. The
-      SQLite write path itself is covered by the live tests. Worth confirming
-      once on an idle server before the first release.
-- [ ] **A plan file**, so `apply --plan` can write from a plan made earlier and
-      the container can apply without reaching Plex at all. Would also close the
-      gap above.
+- [x] ~~**A plan file**~~ `plan --save` and `apply --plan`. Planning needs the
+      Plex API; writing needs only the database, so the two halves can run in
+      different places. Verified: the container applied a plan made on the host
+      with Plex unreachable, wrote both markers, and undid them again. Applying
+      the same plan twice wrote nothing the second time (skipped=1), which is
+      what makes it safe on a timer. This also closed the container gap below.
+- [ ] **Container image publishing.** The image builds and runs (`docker build`,
+      distroless, no CGO), and the write path has now been watched happen inside
+      it, so all that is left is pushing it to a registry and wiring the release
+      workflow to do so.
 - [ ] **Translations** - TheIntroDB/translations scans integration repos for
       locale directories. This one has none yet.

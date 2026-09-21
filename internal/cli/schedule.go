@@ -23,6 +23,7 @@ func newScheduleCmd(g *globals) *cobra.Command {
 	var (
 		cronExpr     string
 		printNext    bool
+		planPath     string
 		runOnStart   bool
 		once         bool
 		yes          bool
@@ -117,7 +118,15 @@ writes with --yes.
 
 			runOnce := func() {
 				started := time.Now()
-				result, err := runner.Run(cmd.Context(), options)
+				var (
+					result *sync.Result
+					err    error
+				)
+				if planPath != "" {
+					result, err = runner.ApplyPlanFile(cmd.Context(), planPath, options)
+				} else {
+					result, err = runner.Run(cmd.Context(), options)
+				}
 				if err != nil {
 					// A failed run must not end the schedule. A library that is
 					// mid-scan, a server that is restarting or a rate limit that
@@ -170,6 +179,7 @@ writes with --yes.
 	}
 
 	cmd.Flags().StringVar(&cronExpr, "cron", "", "cron expression, five fields, in local time")
+	cmd.Flags().StringVar(&planPath, "plan", "", "apply a plan saved by `plan --save` instead of planning, so no Plex is needed")
 	cmd.Flags().BoolVar(&printNext, "print-next", false, "print the next five run times and exit")
 	cmd.Flags().BoolVar(&runOnStart, "run-on-start", false, "run once immediately, then wait for the first firing")
 	cmd.Flags().BoolVar(&once, "once", false, "run a single time and exit, for a systemd or launchd timer")

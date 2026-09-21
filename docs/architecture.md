@@ -50,23 +50,31 @@ expects, and the safety rules that come with editing a live database.
 
 ## Modules
 
-| module | responsibility | touches |
+| package | responsibility | touches |
 | --- | --- | --- |
-| `config.py` | load and validate TOML, environment and flags | disk (read) |
-| `models.py` | the shared data types | nothing |
-| `plex_api.py` | enumerate libraries, read ids, chapters and existing markers | Plex HTTP |
-| `plex_db.py` | read and write markers, back up, undo | Plex SQLite |
-| `theintrodb.py` | TheIntroDB client: pacing, budget, cache, null times | TheIntroDB HTTP |
-| `ledger.py` | durable state: lookup cache, what we wrote, run history | our SQLite |
-| `planner.py` | merge sources, map types, resolve ranges, decide the change set | nothing |
-| `sources/chapters.py` | markers from chapter names Plex already extracted | `plex_api` output |
-| `sources/detection.py` | local fingerprint detection for what nothing else covers | ffmpeg + fpcalc |
-| `sync.py` | orchestrate a run: inventory, fetch, plan, apply, undo | all of the above |
-| `cli.py` | argument parsing and human output | everything |
+| `internal/config` | load and validate TOML, environment and flags; find Plex's files per platform | disk (read) |
+| `internal/model` | the shared data types | nothing |
+| `internal/plexapi` | enumerate libraries, read ids, chapters and existing markers | Plex HTTP |
+| `internal/plexdb` | read and write markers, back up, undo | Plex SQLite |
+| `internal/tidb` | TheIntroDB client: pacing, budget, cache, null times | TheIntroDB HTTP |
+| `internal/ledger` | durable state: lookup cache, what we wrote, run history | our SQLite |
+| `internal/planner` | merge sources, map types, resolve ranges, decide the change set | nothing |
+| `internal/source` | markers from chapter names Plex extracted, and local detection for the rest | `plexapi` output, ffmpeg + fpcalc |
+| `internal/schedule` | the cron subset the process holds its own timer with | nothing |
+| `internal/planfile` | read and write plans on disk, with provenance and a format version | disk (read/write) |
+| `internal/sync` | orchestrate a run: inventory, fetch, plan, apply, undo | all of the above |
+| `internal/cli` | argument parsing and human output | everything |
+| `internal/tui` | the terminal interface | `internal/app` |
+| `internal/api` | the local JSON control API | `internal/app` |
 
-Data flows one way: sources produce `SegmentSet`s, the planner turns them into
-`ItemPlan`s, the writer turns a plan into rows. No module below the planner
-performs a lookup, and no source module writes anything.
+Data flows one way: sources produce segments, the planner turns them into
+`ItemPlan`s, the writer turns a plan into rows. No package below the planner
+performs a lookup, and no source package writes anything.
+
+`internal/planfile` is what lets the two halves run in different places: a plan
+can be decided where Plex is reachable and written where the database is, and
+`internal/sync` reconciles each change against the database before it is applied,
+so a plan that is no longer current is skipped rather than trusted.
 
 ## Sources
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/TheIntroDB/plex-integration/internal/model"
@@ -258,6 +259,74 @@ func TestLiveApplyWritesAndUndoesExactly(t *testing.T) {
 	}
 	if out, err := IntegrityCheck(path); err != nil || out != "ok" {
 		t.Errorf("integrity check after undo: %q %v", out, err)
+	}
+}
+
+// TestLiveApplyingTheSamePlanTwiceIsIdempotent is the property a nightly job
+// depends on: a saved plan re-applied after it has already been applied must
+// skip rather than add a second set of markers.
+//
+// This is why a plan file does not need to be fresh. The reconciliation compares
+// every change against the rows actually in the database, so a plan that no
+// longer matches what it assumed is skipped instead of duplicated.
+func TestLiveApplyingTheSamePlanTwiceIsIdempotent(t *testing.T) {
+	path := liveCopy(t)
+	db, err := OpenDB(path, false)
+	if err != nil {
+		t.Fatalf("open the copy: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	tagID, err := db.MarkerTagID()
+	if err != nil {
+		t.Skipf("this database has no marker tag: %v", err)
+	}
+	ratingKey, _ := liveMovie(t, db)
+	before := len(liveMarkerRows(t, db, ratingKey, tagID))
+
+	plan := model.ItemPlan{
+		Item: model.LibraryItem{RatingKey: int(ratingKey), Kind: model.KindMovie, Title: "twice"},
+		Desired: []model.Marker{
+			{Text: model.MarkerIntro, StartMS: 60_000, EndMS: 90_000, Source: "theintrodb"},
+		},
+		Add: []model.Marker{
+			{Text: model.MarkerIntro, StartMS: 60_000, EndMS: 90_000, Source: "theintrodb"},
+		},
+		Reason: "add",
+	}
+
+	journalDir := t.TempDir()
+	apply := func(pass int) WriteStats {
+		journal, err := NewJournal(filepath.Join(journalDir, "undo-"+strconv.Itoa(pass)+".jsonl"))
+		if err != nil {
+			t.Fatalf("journal: %v", err)
+		}
+		stats, err := db.ApplyPlans([]model.ItemPlan{plan}, tagID, 1, journal)
+		if closeErr := journal.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			t.Fatalf("apply %d: %v", pass, err)
+		}
+		return stats
+	}
+
+	first := apply(1)
+	if first.Added != 1 || first.Skipped != 0 {
+		t.Fatalf("first pass added %d and skipped %d, want 1 and 0", first.Added, first.Skipped)
+	}
+	afterFirst := len(liveMarkerRows(t, db, ratingKey, tagID))
+	if afterFirst != before+1 {
+		t.Fatalf("after the first pass there are %d rows, want %d", afterFirst, before+1)
+	}
+
+	second := apply(2)
+	if second.Added != 0 || second.Skipped != 1 {
+		t.Errorf("second pass added %d and skipped %d, want 0 and 1: the same plan "+
+			"must not be applied twice", second.Added, second.Skipped)
+	}
+	if got := len(liveMarkerRows(t, db, ratingKey, tagID)); got != afterFirst {
+		t.Errorf("after the second pass there are %d rows, want the %d from the first", got, afterFirst)
 	}
 }
 

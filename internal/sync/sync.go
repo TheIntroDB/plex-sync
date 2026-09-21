@@ -18,6 +18,7 @@ import (
 	"github.com/TheIntroDB/plex-integration/internal/app"
 	"github.com/TheIntroDB/plex-integration/internal/ledger"
 	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-integration/internal/planfile"
 	"github.com/TheIntroDB/plex-integration/internal/planner"
 	"github.com/TheIntroDB/plex-integration/internal/plexdb"
 	"github.com/TheIntroDB/plex-integration/internal/source"
@@ -404,6 +405,60 @@ func (r *Runner) Run(ctx context.Context, opts Options) (*Result, error) {
 	r.recordRun(started, "sync", res, nil)
 	return res, nil
 }
+
+// ApplyPlanFile applies a plan made earlier, from a file.
+//
+// This is the half of the work that needs no Plex: the plan already says what
+// should change, so all that is left is the database. That is what lets a
+// container apply a plan made elsewhere.
+//
+// The plan is a snapshot and is not trusted. Every item is reconciled against
+// the rows actually in the database first, and anything that no longer looks the
+// way the plan assumed is skipped rather than guessed at.
+func (r *Runner) ApplyPlanFile(ctx context.Context, path string, opts Options) (*Result, error) {
+	started := r.now()
+
+	plan, meta, err := planfile.Load(path)
+	if err != nil {
+		r.recordRun(started, "apply-plan", nil, err)
+		return nil, err
+	}
+
+	// The database it was made against is worth reporting, and not worth refusing
+	// over: making a plan on the host and applying it in a container, where the same
+	// database is mounted at a different path, is the point of plan files.
+	if meta.Database != "" {
+		if current := r.app.PlexDBPath(); current != "" && meta.Database != current {
+			r.app.Log.Warn("this plan was made against a database at a different path",
+				"made_against", meta.Database,
+				"applying_to", current,
+				"note", "every change is checked against the database before it is written")
+		}
+	}
+
+	if age := meta.Age(r.now()); age > planMaxAge {
+		r.app.Log.Warn("this plan is old",
+			"made", meta.CreatedAt.Format(time.RFC3339),
+			"age", age.Round(time.Hour).String(),
+			"note", "each change is checked against the database before it is written")
+	}
+	r.app.Log.Info("applying a saved plan",
+		"path", path,
+		"items", len(plan.Work()),
+		"made", meta.Describe())
+
+	res := &Result{Plan: *plan}
+	if err := r.Apply(ctx, res, opts); err != nil {
+		r.recordRun(started, "apply-plan", res, err)
+		return res, err
+	}
+	r.recordRun(started, "apply-plan", res, nil)
+	return res, nil
+}
+
+// planMaxAge is when a plan is old enough to be worth mentioning. It is not a
+// limit: the reconciliation is what makes an old plan safe, not the date.
+const planMaxAge = 24 * time.Hour
 
 // Undo reverts a journal.
 func (r *Runner) Undo(ctx context.Context, journalPath string, opts Options) (int, error) {

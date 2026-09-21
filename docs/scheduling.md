@@ -219,6 +219,45 @@ docker run -d --name tidb-plex --restart=unless-stopped \
   tidb-plex:latest schedule --yes
 ```
 
+### When the container cannot see Plex
+
+Planning reads the library over Plex's API. Writing needs only the database. If
+the container cannot reach Plex, or you would rather see what is going to change
+before it does, split the work with a plan file:
+
+```bash
+# On the host, where Plex is reachable:
+tidb-plex plan --save /mnt/cache/appdata/tidb-plex/plan.json
+
+# In the container, with no route to Plex at all:
+docker run --rm \
+  -v /mnt/cache/appdata/tidb-plex:/state \
+  -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
+  -e PLEX_DB=/db/com.plexapp.plugins.library.db \
+  -e PLEX_URL=http://unreachable \
+  tidb-plex:latest apply --plan /state/plan.json --yes --plex-stopped
+```
+
+`--plex-stopped` is honest here in a way it is not elsewhere: nothing else is
+using that database, so the check is skipped rather than guessed. It matters
+because there is no Plex to ask.
+
+The plan file is not trusted on its own. Every change in it is checked against
+the rows actually in the database before anything is written, and any item that
+no longer looks the way the plan assumed is skipped. Applying the same plan
+twice writes the second time nothing, which is what makes this safe on a timer:
+
+```
+$ docker run ... apply --plan /state/plan.json --yes --plex-stopped
+Wrote 2 marker(s) across 1 item(s), removed 0, skipped 0.
+$ docker run ... apply --plan /state/plan.json --yes --plex-stopped
+Wrote 0 marker(s) across 0 item(s), removed 0, skipped 1.
+```
+
+The plan records what made it, when, and against which database. Applying it
+elsewhere logs that the path differs. That is expected, not wrong: the point is
+that the same database is mounted at a different place.
+
 The Plex folder is mounted **read only** except for the database. SQLite creates
 its journal and shared-memory files next to the database it opens, so a directory
 that cannot be written to cannot be written through: mounting the whole folder

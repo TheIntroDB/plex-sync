@@ -7,11 +7,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/TheIntroDB/plex-integration/internal/app"
+	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
 	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-integration/internal/planfile"
 	"github.com/TheIntroDB/plex-integration/internal/sync"
 )
 
@@ -108,13 +111,19 @@ item never gets markers.`),
 func newPlanCmd(g *globals) *cobra.Command {
 	opts := sync.Options{}
 	var show int
+	var savePath string
 	cmd := &cobra.Command{
 		Use:   "plan",
 		Short: "Show what a run would change, without changing anything",
 		Long: strings.TrimSpace(`
 Builds the change set and prints it. Nothing is written and no database lock is
 taken. Every lookup it makes is recorded and cached, so a plan followed by a
-sync does not pay for its requests twice.`),
+sync does not pay for its requests twice.
+
+With --save, the plan is also written to a file, which ` + "`apply --plan`" + ` can
+write later without contacting Plex. That is how a container applies a plan made
+on the host, where the library is reachable. The file records what made it and
+against which database, and applying it checks both.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			application, err := openApp(g, app.Options{})
@@ -129,6 +138,26 @@ sync does not pay for its requests twice.`),
 			if err != nil {
 				return err
 			}
+
+			if savePath != "" {
+				meta := planfile.Meta{
+					CreatedAt: time.Now(),
+					Tool:      "tidb-plex",
+					Version:   buildinfo.Version,
+					Database:  application.PlexDBPath(),
+					Plex:      application.Cfg.Plex.URL,
+				}
+				if err := planfile.Save(savePath, &res.Plan, meta); err != nil {
+					return err
+				}
+				if !g.jsonOut {
+					fmt.Fprintf(stdout(cmd), "Saved %d item(s) to %s\n",
+						len(res.Plan.Work()), savePath)
+					fmt.Fprintf(stdout(cmd),
+						"Write it later with: tidb-plex apply --plan %s --yes\n", savePath)
+				}
+			}
+
 			if g.jsonOut {
 				encoder := json.NewEncoder(stdout(cmd))
 				encoder.SetIndent("", "  ")
@@ -140,6 +169,7 @@ sync does not pay for its requests twice.`),
 	}
 	addRunFlags(cmd, &opts)
 	cmd.Flags().IntVar(&show, "show-items", 25, "how many items to print")
+	cmd.Flags().StringVar(&savePath, "save", "", "also write the plan to this file, for `apply --plan`")
 	return cmd
 }
 
@@ -148,6 +178,7 @@ sync does not pay for its requests twice.`),
 func newApplyCmd(g *globals) *cobra.Command {
 	opts := sync.Options{}
 	var yes bool
+	var planPath string
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Write the planned markers into the Plex database",
@@ -158,7 +189,13 @@ nothing is written.
 Before writing, the tool must confirm whether Plex is running. If Plex is up it
 refuses unless --live is given, and then refuses again if anything is playing.
 The database is backed up first, and every change is journalled so it can be
-reverted with ` + "`tidb-plex undo`" + `.`),
+reverted with ` + "`tidb-plex undo`" + `.
+
+With --plan, it writes the plan saved earlier by ` + "`plan --save`" + ` instead of
+making a fresh one, and never contacts Plex at all. That is how a container
+applies a plan made on the host. The saved plan is not trusted on its own: every
+item is checked against the rows actually in the database first, and anything
+that no longer matches is skipped rather than guessed at.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			application, err := openApp(g, app.Options{NeedPlexDB: !opts.DryRun})
@@ -169,18 +206,28 @@ reverted with ` + "`tidb-plex undo`" + `.`),
 
 			opts.Confirm = yes
 			runner := sync.New(application)
-			res, err := runner.Plan(cmd.Context(), opts)
+
+			var res *sync.Result
+			if planPath != "" {
+				res, err = runner.ApplyPlanFile(cmd.Context(), planPath, opts)
+			} else {
+				if res, err = runner.Plan(cmd.Context(), opts); err == nil {
+					if !g.jsonOut {
+						printPlan(cmd, res, 10)
+					}
+					err = runner.Apply(cmd.Context(), res, opts)
+				}
+			}
 			if err != nil {
-				return err
-			}
-			if !g.jsonOut {
-				printPlan(cmd, res, 10)
-			}
-			if err := runner.Apply(cmd.Context(), res, opts); err != nil {
 				if err == sync.ErrNeedsConfirmation && !g.jsonOut {
 					fmt.Fprintln(stdout(cmd))
-					fmt.Fprintln(stdout(cmd),
-						"Nothing was written. Re-run with --yes to apply the plan above.")
+					if planPath != "" {
+						fmt.Fprintf(stdout(cmd),
+							"Nothing was written. Re-run with --yes to apply %s.\n", planPath)
+					} else {
+						fmt.Fprintln(stdout(cmd),
+							"Nothing was written. Re-run with --yes to apply the plan above.")
+					}
 					return &silentError{code: ExitNeedsReview}
 				}
 				return err
@@ -206,6 +253,7 @@ reverted with ` + "`tidb-plex undo`" + `.`),
 	}
 	addRunFlags(cmd, &opts)
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm writing to the Plex database")
+	cmd.Flags().StringVar(&planPath, "plan", "", "apply a plan saved by `plan --save` instead of making one (needs no Plex)")
 	return cmd
 }
 

@@ -73,19 +73,45 @@ pending submissions are included in what you get back.
 ### Docker
 
 ```bash
-docker run -d \
+docker run -d --restart=unless-stopped \
   --name tidb-plex \
   -e PLEX_URL=http://plex:32400 \
   -e PLEX_TOKEN=xxxxxxxxxxxx \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server:/plex:ro" \
   -v "/mnt/cache/appdata/tidb-plex:/state" \
-  theintrodb/tidb-plex:latest sync
+  theintrodb/tidb-plex:latest schedule --yes
 ```
 
 The Plex database must be mounted at its real, non-FUSE path. On Unraid that
 means the `/mnt/cache/...` path, never `/mnt/user/...`: SQLite locking through
 the shfs layer is not reliable and a write can corrupt the database. The tool
 refuses a `/mnt/user` path unless you explicitly allow it.
+
+The container holds its own schedule, so there is nothing else to install. It
+needs the Plex URL, the token and the database mounted read-write, because that
+is where the markers go.
+
+**A container does not have to reach Plex at all.** Planning needs the Plex API;
+writing needs only the database. Split the two if the container cannot see the
+server, or if you would rather decide what changes before it happens:
+
+```bash
+# Wherever Plex is reachable: decide, and record the decision.
+tidb-plex plan --save /mnt/cache/appdata/tidb-plex/plan.json
+
+# The container: write exactly that, and nothing else.
+docker run --rm \
+  -v "/mnt/cache/appdata/tidb-plex:/state" \
+  -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
+  -e PLEX_URL=http://unreachable \
+  -e PLEX_DB=/db/com.plexapp.plugins.library.db \
+  theintrodb/tidb-plex:latest apply --plan /state/plan.json --yes --plex-stopped
+```
+
+Neither half is trusted on its own: applying a saved plan checks every change
+against the rows actually in the database, and skips anything that no longer
+matches rather than guessing. Applying the same plan twice does nothing the
+second time.
 
 ### Unraid
 
@@ -130,7 +156,9 @@ The same work is available as commands, for cron and scripts:
 tidb-plex config check          # validate configuration and reach both services
 tidb-plex library               # list matched items and the ids used for lookups
 tidb-plex plan --show "the last of us"   # what a run would change, for one show
+tidb-plex plan --save plan.json  # ...and save it, to write later without Plex
 tidb-plex apply --yes           # write the markers (--dry-run to preview)
+tidb-plex apply --plan plan.json --yes   # write a saved plan, without contacting Plex
 tidb-plex undo latest --yes     # revert the most recent run
 tidb-plex status                # ledger, quota and recent runs
 tidb-plex sync --yes            # inventory, fetch, plan and apply, once
