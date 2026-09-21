@@ -7,10 +7,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/logging"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/logging"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // newTestModel opens a real application against a temporary state directory and

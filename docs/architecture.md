@@ -1,6 +1,6 @@
 # Architecture
 
-`tidb-plex` is a batch tool. It reads your Plex library, asks TheIntroDB for the
+`plex-sync` is a batch tool. It reads your Plex library, asks TheIntroDB for the
 segments it knows, and writes the result into the Plex database as native intro
 and credits markers. There is no daemon, no web interface and no agent that runs
 while you watch something: a run is started by you, by cron, by a systemd timer

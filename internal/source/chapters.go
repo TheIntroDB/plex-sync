@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // chapterPatterns match the chapter names Plex itself extracted from a file.

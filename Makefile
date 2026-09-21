@@ -1,10 +1,10 @@
-# tidb-plex developer tasks.
+# plex-sync developer tasks.
 #
 # Everything here works with stock Go 1.24+ and no CGO, because the SQLite
 # driver is pure Go.
 
-BINARY  := tidb-plex
-PKG     := github.com/TheIntroDB/plex-integration
+BINARY  := plex-sync
+PKG     := github.com/TheIntroDB/plex-sync
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)

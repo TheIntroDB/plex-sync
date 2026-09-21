@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 func episode(season, number int) model.LibraryItem {

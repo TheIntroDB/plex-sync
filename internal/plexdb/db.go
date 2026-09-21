@@ -24,7 +24,7 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go driver, driver name "sqlite"; no CGO on purpose
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // Tag types Plex uses. Marker rows hang off a tag with TagTypeMarker, and the

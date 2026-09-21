@@ -22,10 +22,10 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humafiber"
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
-	"github.com/TheIntroDB/plex-integration/internal/model"
-	"github.com/TheIntroDB/plex-integration/internal/sync"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/buildinfo"
+	"github.com/TheIntroDB/plex-sync/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/sync"
 )
 
 // Server wraps the router and the operations.
@@ -41,11 +41,11 @@ func New(a *app.App) *Server {
 	s := &Server{
 		app:    a,
 		runner: sync.New(a),
-		router: fiber.New(fiber.Config{AppName: "tidb-plex"}),
+		router: fiber.New(fiber.Config{AppName: "plex-sync"}),
 	}
-	config := huma.DefaultConfig("tidb-plex", buildinfo.Version)
+	config := huma.DefaultConfig("plex-sync", buildinfo.Version)
 	config.Info.Description = strings.TrimSpace(`
-Local control API for tidb-plex. It reads the Plex library, plans marker
+Local control API for plex-sync. It reads the Plex library, plans marker
 changes, applies them and reverts them.
 
 Planning asks TheIntroDB about every item, so it can take minutes on a large

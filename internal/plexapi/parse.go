@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // This file is the pure half of the package: it turns Plex's JSON, which varies

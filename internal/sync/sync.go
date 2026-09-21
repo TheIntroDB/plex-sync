@@ -15,14 +15,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/ledger"
-	"github.com/TheIntroDB/plex-integration/internal/model"
-	"github.com/TheIntroDB/plex-integration/internal/planfile"
-	"github.com/TheIntroDB/plex-integration/internal/planner"
-	"github.com/TheIntroDB/plex-integration/internal/plexdb"
-	"github.com/TheIntroDB/plex-integration/internal/source"
-	"github.com/TheIntroDB/plex-integration/internal/tidb"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/ledger"
+	"github.com/TheIntroDB/plex-sync/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/planfile"
+	"github.com/TheIntroDB/plex-sync/internal/planner"
+	"github.com/TheIntroDB/plex-sync/internal/plexdb"
+	"github.com/TheIntroDB/plex-sync/internal/source"
+	"github.com/TheIntroDB/plex-sync/internal/tidb"
 )
 
 // Options controls one run.
@@ -118,7 +118,7 @@ func New(a *app.App) *Runner {
 func (r *Runner) Now() time.Time { return r.now() }
 
 // Inventory lists the library items a run would consider, without looking
-// anything up. The library screen and `tidb-plex library` use it.
+// anything up. The library screen and `plex-sync library` use it.
 func (r *Runner) Inventory(ctx context.Context, opts Options) ([]model.LibraryItem, error) {
 	sections, err := r.app.Plex.Sections(ctx)
 	if err != nil {
@@ -344,7 +344,7 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 				"the Plex database has no marker tag yet, so markers cannot be created. "+
 					"Plex only creates that row when it writes a marker itself, which needs "+
 					"Plex Pass, so on a server without it the row has to be made: set "+
-					"apply.create_missing_marker_tag = true (or TIDB_PLEX_CREATE_MARKER_TAG=1) "+
+					"apply.create_missing_marker_tag = true (or PLEX_SYNC_CREATE_MARKER_TAG=1) "+
 					"to let this tool create it: %w", err)
 		}
 		tagID, err = db.MarkerTagIDOrCreate(ctx, journal)
@@ -363,7 +363,7 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 	if err != nil {
 		return fmt.Errorf(
 			"writing to the Plex database failed after %d item(s); undo the earlier ones with "+
-				"`tidb-plex undo %s --yes`: %w", stats.Written, journalPath, err)
+				"`plex-sync undo %s --yes`: %w", stats.Written, journalPath, err)
 	}
 	res.Applied = true
 

@@ -1,10 +1,10 @@
-// Command tidb-plex fills in Plex's intro and credits markers from TheIntroDB.
+// Command plex-sync fills in Plex's intro and credits markers from TheIntroDB.
 package main
 
 import (
 	"os"
 
-	"github.com/TheIntroDB/plex-integration/internal/cli"
+	"github.com/TheIntroDB/plex-sync/internal/cli"
 )
 
 func main() {

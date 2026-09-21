@@ -56,7 +56,7 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
 	exit 1
 fi
 
-work="$(mktemp -d "${TMPDIR:-/tmp}/tidb-plex-live.XXXXXX")"
+work="$(mktemp -d "${TMPDIR:-/tmp}/plex-sync-live.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 copy="$work/library.db"

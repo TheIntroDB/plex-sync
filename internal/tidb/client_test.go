@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/httpclient"
-	"github.com/TheIntroDB/plex-integration/internal/ledger"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/httpclient"
+	"github.com/TheIntroDB/plex-sync/internal/ledger"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // testNow is a fixed instant inside a UTC day, so the budget boundary and the
@@ -162,7 +162,7 @@ func newHarness(t *testing.T, respond func(call int, w http.ResponseWriter, r *h
 		tune(&cfg)
 	}
 
-	hc := httpclient.New(5*time.Second, false, "tidb-plex-test")
+	hc := httpclient.New(5*time.Second, false, "plex-sync-test")
 	t.Cleanup(hc.Close)
 
 	clock := newFakeClock(testNow)

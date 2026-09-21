@@ -8,8 +8,8 @@ package planner
 import (
 	"sort"
 
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // Reasons a plan records for an item.

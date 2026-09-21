@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 func samplePlan() *model.Plan {
@@ -41,7 +41,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	original := samplePlan()
 	meta := Meta{
 		CreatedAt: time.Date(2026, time.September, 20, 21, 0, 0, 0, time.UTC),
-		Tool:      "tidb-plex",
+		Tool:      "plex-sync",
 		Version:   "0.1.0",
 		Database:  "/plex/com.plexapp.plugins.library.db",
 		Plex:      "http://127.0.0.1:32400",

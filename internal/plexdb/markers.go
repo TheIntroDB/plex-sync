@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // DefaultChunkSize is how many items one write transaction covers. Markers are

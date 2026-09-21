@@ -1,5 +1,5 @@
 # Binaries and build output
-/tidb-plex
+/plex-sync
 /dist/
 /bin/
 *.exe
@@ -13,7 +13,7 @@
 *.db-shm
 
 # Local configuration
-/tidb-plex.toml
+/plex-sync.toml
 *.local.toml
 
 # Fingerprint store

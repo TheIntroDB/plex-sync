@@ -1,7 +1,7 @@
 // Package logging configures the program's logger.
 //
 // Output goes to standard error, because standard output belongs to command
-// results: `tidb-plex plan --json` must stay parseable while progress messages
+// results: `plex-sync plan --json` must stay parseable while progress messages
 // are printed.
 package logging
 

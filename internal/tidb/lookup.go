@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // LookupResult describes how one lookup was answered.

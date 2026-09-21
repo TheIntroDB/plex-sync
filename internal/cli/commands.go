@@ -11,11 +11,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
-	"github.com/TheIntroDB/plex-integration/internal/model"
-	"github.com/TheIntroDB/plex-integration/internal/planfile"
-	"github.com/TheIntroDB/plex-integration/internal/sync"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/buildinfo"
+	"github.com/TheIntroDB/plex-sync/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/planfile"
+	"github.com/TheIntroDB/plex-sync/internal/sync"
 )
 
 // runOptions builds the run options every command shares.
@@ -142,7 +142,7 @@ against which database, and applying it checks both.`),
 			if savePath != "" {
 				meta := planfile.Meta{
 					CreatedAt: time.Now(),
-					Tool:      "tidb-plex",
+					Tool:      "plex-sync",
 					Version:   buildinfo.Version,
 					Database:  application.PlexDBPath(),
 					Plex:      application.Cfg.Plex.URL,
@@ -154,7 +154,7 @@ against which database, and applying it checks both.`),
 					fmt.Fprintf(stdout(cmd), "Saved %d item(s) to %s\n",
 						len(res.Plan.Work()), savePath)
 					fmt.Fprintf(stdout(cmd),
-						"Write it later with: tidb-plex apply --plan %s --yes\n", savePath)
+						"Write it later with: plex-sync apply --plan %s --yes\n", savePath)
 				}
 			}
 
@@ -189,7 +189,7 @@ nothing is written.
 Before writing, the tool must confirm whether Plex is running. If Plex is up it
 refuses unless --live is given, and then refuses again if anything is playing.
 The database is backed up first, and every change is journalled so it can be
-reverted with ` + "`tidb-plex undo`" + `.
+reverted with ` + "`plex-sync undo`" + `.
 
 With --plan, it writes the plan saved earlier by ` + "`plan --save`" + ` instead of
 making a fresh one, and never contacts Plex at all. That is how a container
@@ -244,7 +244,7 @@ that no longer matches is skipped rather than guessed at.`),
 				if res.BackupPath != "" {
 					fmt.Fprintf(stdout(cmd), "Backup:     %s\n", res.BackupPath)
 				}
-				fmt.Fprintf(stdout(cmd), "Undo with:  tidb-plex undo %s --yes\n", res.UndoPath)
+				fmt.Fprintf(stdout(cmd), "Undo with:  plex-sync undo %s --yes\n", res.UndoPath)
 			} else {
 				fmt.Fprintln(stdout(cmd), "\nNothing to do.")
 			}
@@ -285,7 +285,7 @@ writes nothing and exits non-zero rather than doing something surprising.`),
 			if err != nil {
 				if err == sync.ErrNeedsConfirmation {
 					fmt.Fprintln(os.Stderr,
-						"tidb-plex sync: nothing was written. Pass --yes to allow writes.")
+						"plex-sync sync: nothing was written. Pass --yes to allow writes.")
 					return &silentError{code: ExitNeedsReview}
 				}
 				return err

@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
-	"github.com/TheIntroDB/plex-integration/internal/plexdb"
-	"github.com/TheIntroDB/plex-integration/internal/source"
+	"github.com/TheIntroDB/plex-sync/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/plexdb"
+	"github.com/TheIntroDB/plex-sync/internal/source"
 )
 
 // detect runs local fingerprint detection for episodes nothing else covered.

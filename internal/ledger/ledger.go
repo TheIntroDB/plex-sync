@@ -32,7 +32,7 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go driver, name "sqlite"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // Request sources, used to scope the daily accounting.

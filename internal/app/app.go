@@ -14,13 +14,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/httpclient"
-	"github.com/TheIntroDB/plex-integration/internal/ledger"
-	"github.com/TheIntroDB/plex-integration/internal/plexapi"
-	"github.com/TheIntroDB/plex-integration/internal/plexdb"
-	"github.com/TheIntroDB/plex-integration/internal/tidb"
+	"github.com/TheIntroDB/plex-sync/internal/buildinfo"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/httpclient"
+	"github.com/TheIntroDB/plex-sync/internal/ledger"
+	"github.com/TheIntroDB/plex-sync/internal/plexapi"
+	"github.com/TheIntroDB/plex-sync/internal/plexdb"
+	"github.com/TheIntroDB/plex-sync/internal/tidb"
 )
 
 // App is the shared runtime state.

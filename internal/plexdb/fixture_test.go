@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // fixtureSchema is the Plex library schema this package is written against,

@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/httpclient"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/httpclient"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // ---------------------------------------------------------------------------

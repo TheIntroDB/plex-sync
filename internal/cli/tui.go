@@ -3,9 +3,9 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/logging"
-	"github.com/TheIntroDB/plex-integration/internal/tui"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/logging"
+	"github.com/TheIntroDB/plex-sync/internal/tui"
 )
 
 func newTUICmd(g *globals) *cobra.Command {
@@ -17,7 +17,7 @@ func newTUICmd(g *globals) *cobra.Command {
 		Use:   "tui",
 		Short: "Start the interactive terminal interface",
 		Long: `Starts the interactive interface: status, library, plan, runs and settings,
-   driven entirely from the keyboard. ` + "`tidb-plex`" + ` with no arguments does the
+   driven entirely from the keyboard. ` + "`plex-sync`" + ` with no arguments does the
 same thing when it is run from a terminal.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

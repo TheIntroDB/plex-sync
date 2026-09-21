@@ -1,4 +1,4 @@
-module github.com/TheIntroDB/plex-integration
+module github.com/TheIntroDB/plex-sync
 
 go 1.27.1
 

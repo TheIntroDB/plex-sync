@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // fakeNow is a fixed instant inside a UTC day, so day boundaries and TTLs are

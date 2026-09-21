@@ -23,15 +23,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/httpclient"
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/buildinfo"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/httpclient"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 const (
 	// Product is the X-Plex-Product value sent with every request.
-	Product = "tidb-plex"
+	Product = "plex-sync"
 	// DefaultURL applies when the configuration leaves plex.url empty.
 	DefaultURL = "http://127.0.0.1:32400"
 	// ItemWindow is how many items a paged enumeration asks for per request.

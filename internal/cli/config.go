@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/config"
 )
 
 func newConfigCmd(g *globals) *cobra.Command {
@@ -67,7 +67,7 @@ func configInitCmd(g *globals) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				path = filepath.Join(dir, "tidb-plex", "config.toml")
+				path = filepath.Join(dir, "plex-sync", "config.toml")
 			}
 			if _, err := os.Stat(path); err == nil && !force {
 				return fmt.Errorf("%s already exists; pass --force to overwrite it", path)

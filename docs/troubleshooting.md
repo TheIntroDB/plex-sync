@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `tidb-plex config check`. It validates the configuration and probes
+Start with `plex-sync config check`. It validates the configuration and probes
 both services, and its output usually names the problem.
 
 ## Nothing appears in Plex
@@ -9,11 +9,11 @@ both services, and its output usually names the problem.
 anything when you press play, so a library that has never been synced has no
 markers.
 
-1. `tidb-plex plan` prints what a run intends to do. If it says nothing to do,
+1. `plex-sync plan` prints what a run intends to do. If it says nothing to do,
    the next two checks explain why.
-2. `tidb-plex library` lists every item with the id a lookup would use. Items
+2. `plex-sync library` lists every item with the id a lookup would use. Items
    showing `no id` cannot be looked up at all.
-3. Run `tidb-plex apply --yes`, or `tidb-plex sync --yes` from a scheduled job.
+3. Run `plex-sync apply --yes`, or `plex-sync sync --yes` from a scheduled job.
 
 If the plan says items have no data, TheIntroDB does not have those segments yet.
 
@@ -90,7 +90,7 @@ which puts them back.
 ## Markers moved or look wrong
 
 - **A few seconds out**: mostly a cut difference. Check that lookups are being
-  made with the file length (`tidb-plex plan` reports the source of each
+  made with the file length (`plex-sync plan` reports the source of each
   marker), and that the file has not been replaced since.
 - **Minutes out**: usually a PAL speed-up, or an episode-numbering mismatch. A
   show that Plex numbers differently from TMDb (common with anime and
@@ -113,7 +113,7 @@ day works on new content.
 
 ## Undo
 
-Every apply writes a journal to `state/undo/`. `tidb-plex undo latest --yes`
+Every apply writes a journal to `state/undo/`. `plex-sync undo latest --yes`
 reverts the most recent run by restoring the exact previous rows.
 
 Only the most recent journal is offered by default. Reverting an older one after

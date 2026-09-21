@@ -40,9 +40,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/httpclient"
-	"github.com/TheIntroDB/plex-integration/internal/ledger"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/httpclient"
+	"github.com/TheIntroDB/plex-sync/internal/ledger"
 )
 
 // API paths, relative to the configured base URL.
@@ -52,7 +52,7 @@ const (
 )
 
 // DefaultUserAgent identifies the tool to the API.
-const DefaultUserAgent = "tidb-plex"
+const DefaultUserAgent = "plex-sync"
 
 // Ceilings and thresholds that encode the API's behaviour.
 const (

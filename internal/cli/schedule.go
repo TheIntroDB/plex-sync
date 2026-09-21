@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/schedule"
-	"github.com/TheIntroDB/plex-integration/internal/sync"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/schedule"
+	"github.com/TheIntroDB/plex-sync/internal/sync"
 )
 
 // newScheduleCmd runs sync on a timer inside this process.
@@ -49,16 +49,16 @@ A scheduled run confirms nothing by itself. Repeating a write on a timer is
 exactly where a mistake compounds, so a schedule reads unless you have asked for
 writes with --yes.
 
-    tidb-plex schedule                 report what is missing, once a day
-    tidb-plex schedule --yes            write it, once a day
-    tidb-plex schedule --yes --live     write even while Plex is streaming
-    tidb-plex schedule --once --yes     a single run, for systemd or launchd
-    tidb-plex schedule --print-next     the next five run times, then exit`,
+    plex-sync schedule                 report what is missing, once a day
+    plex-sync schedule --yes            write it, once a day
+    plex-sync schedule --yes --live     write even while Plex is streaming
+    plex-sync schedule --once --yes     a single run, for systemd or launchd
+    plex-sync schedule --print-next     the next five run times, then exit`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The config alone, without opening the library, the ledger or the
 			// Plex database: --print-next must answer from the schedule and
-			// nothing else, and TIDB_PLEX_SCHEDULE has to be reflected.
+			// nothing else, and PLEX_SYNC_SCHEDULE has to be reflected.
 			cfg, err := loadConfig(g)
 			if err != nil {
 				return err

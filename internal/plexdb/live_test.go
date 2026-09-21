@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // The tests in this file only run against a real Plex database, named by

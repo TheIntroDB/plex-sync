@@ -11,10 +11,10 @@ writes without `--yes`, and nothing writes while someone is watching something.
 
 | command | what happens |
 | --- | --- |
-| `tidb-plex schedule` | reads the library, reports what is missing, changes nothing |
-| `tidb-plex schedule --yes` | the same, then writes the markers |
-| `tidb-plex schedule --once --yes` | one pass, then exit: for systemd, launchd or Task Scheduler |
-| `tidb-plex schedule --print-next` | the next five run times, then exit |
+| `plex-sync schedule` | reads the library, reports what is missing, changes nothing |
+| `plex-sync schedule --yes` | the same, then writes the markers |
+| `plex-sync schedule --once --yes` | one pass, then exit: for systemd, launchd or Task Scheduler |
+| `plex-sync schedule --print-next` | the next five run times, then exit |
 
 Every run writes a line per item to the ledger and a log line to standard error,
 so `journalctl`, the Docker log or a file all work as a record of what happened.
@@ -22,7 +22,7 @@ so `journalctl`, the Docker log or a file all work as a record of what happened.
 ## The built-in schedule
 
 ```bash
-tidb-plex schedule --yes
+plex-sync schedule --yes
 ```
 
 The process holds the schedule itself, so it needs no cron, no shell and no
@@ -34,9 +34,9 @@ minute hour day-of-month month day-of-week
 ```
 
 ```bash
-tidb-plex schedule --yes --cron '30 7 * * *'    # daily at 07:30
-tidb-plex schedule --yes --cron '0 */6 * * *'   # every six hours
-tidb-plex schedule --yes --cron '0 3 * * 0'     # Sundays at 03:00
+plex-sync schedule --yes --cron '30 7 * * *'    # daily at 07:30
+plex-sync schedule --yes --cron '0 */6 * * *'   # every six hours
+plex-sync schedule --yes --cron '0 3 * * 0'     # Sundays at 03:00
 ```
 
 The default is `30 7 * * *`. Plex runs its own maintenance tasks at 07:00, and
@@ -47,7 +47,7 @@ the cheap way to stay out of its way.
 Check what any expression means before trusting it to a nightly job:
 
 ```bash
-$ tidb-plex schedule --cron '0 */6 * * *' --print-next
+$ plex-sync schedule --cron '0 */6 * * *' --print-next
 2026-09-21T00:00:00-06:00
 2026-09-21T06:00:00-06:00
 2026-09-21T12:00:00-06:00
@@ -71,15 +71,15 @@ The expression can also come from the environment, which is how the Unraid
 template sets it:
 
 ```bash
-TIDB_PLEX_SCHEDULE='0 5 * * *'
+PLEX_SYNC_SCHEDULE='0 5 * * *'
 ```
 
 A malformed expression is rejected when the configuration is checked, not at
 midnight:
 
 ```bash
-$ tidb-plex config check
-tidb-plex: configuration is not usable: schedule.cron: minute field: 60-60 is
+$ plex-sync config check
+plex-sync: configuration is not usable: schedule.cron: minute field: 60-60 is
 outside the allowed range 0-59
 ```
 
@@ -89,7 +89,7 @@ Run it once per firing and let systemd own the timer. Give it a user so the
 state directory belongs to that user:
 
 ```ini
-# /etc/systemd/system/tidb-plex.service
+# /etc/systemd/system/plex-sync.service
 [Unit]
 Description=Fill in Plex intro and credits markers from TheIntroDB
 After=network-online.target plexmediaserver.service
@@ -97,15 +97,15 @@ After=network-online.target plexmediaserver.service
 [Service]
 Type=oneshot
 User=plex
-Environment=TIDB_PLEX_STATE_DIR=/var/lib/tidb-plex
-ExecStart=/usr/local/bin/tidb-plex schedule --once --yes
+Environment=PLEX_SYNC_STATE_DIR=/var/lib/plex-sync
+ExecStart=/usr/local/bin/plex-sync schedule --once --yes
 # A run that finds nothing to do exits 0, so the timer keeps its schedule.
 ```
 
 ```ini
-# /etc/systemd/system/tidb-plex.timer
+# /etc/systemd/system/plex-sync.timer
 [Unit]
-Description=Nightly tidb-plex run
+Description=Nightly plex-sync run
 
 [Timer]
 # Do not stack up missed runs after downtime: one catch-up pass is enough.
@@ -120,9 +120,9 @@ WantedBy=timers.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now tidb-plex.timer
-systemctl list-timers tidb-plex.timer      # when it will run next
-journalctl -u tidb-plex.service -n 50      # what the last run did
+sudo systemctl enable --now plex-sync.timer
+systemctl list-timers plex-sync.timer      # when it will run next
+journalctl -u plex-sync.service -n 50      # what the last run did
 ```
 
 `RandomizedDelaySec` matters if you run this on more than one server: without
@@ -145,7 +145,7 @@ same user as Plex, as above, avoids the question.
   <string>org.theintrodb.plex</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/tidb-plex</string>
+    <string>/usr/local/bin/plex-sync</string>
     <string>schedule</string>
     <string>--once</string>
     <string>--yes</string>
@@ -159,9 +159,9 @@ same user as Plex, as above, avoids the question.
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>/tmp/tidb-plex.log</string>
+  <string>/tmp/plex-sync.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/tidb-plex.log</string>
+  <string>/tmp/plex-sync.log</string>
 </dict>
 </plist>
 ```
@@ -169,7 +169,7 @@ same user as Plex, as above, avoids the question.
 ```bash
 launchctl load ~/Library/LaunchAgents/org.theintrodb.plex.plist
 launchctl start org.theintrodb.plex          # run it now, to test
-tail -f /tmp/tidb-plex.log
+tail -f /tmp/plex-sync.log
 ```
 
 `--plex-stopped` is there because Plex on a desktop is usually running. It
@@ -180,12 +180,12 @@ only takes effect when the running check cannot be made at all. See
 ## Task Scheduler (Windows)
 
 ```powershell
-$action  = New-ScheduledTaskAction -Execute "$env:ProgramFiles\tidb-plex\tidb-plex.exe" `
+$action  = New-ScheduledTaskAction -Execute "$env:ProgramFiles\plex-sync\plex-sync.exe" `
              -Argument 'schedule --once --yes --plex-stopped'
 $trigger = New-ScheduledTaskTrigger -Daily -At 7:30am
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
              -DontStopOnIdleEnd -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-Register-ScheduledTask -TaskName 'tidb-plex' -Action $action -Trigger $trigger `
+Register-ScheduledTask -TaskName 'plex-sync' -Action $action -Trigger $trigger `
   -Settings $settings -Description 'Fill in Plex markers from TheIntroDB'
 ```
 
@@ -198,7 +198,7 @@ task forever.
 ```cron
 # Nightly at 07:30, logging to a file. cron has a minimal environment, so the
 # binary is named in full and the state directory is set explicitly.
-30 7 * * *  TIDB_PLEX_STATE_DIR=/var/lib/tidb-plex /usr/local/bin/tidb-plex schedule --once --yes >>/var/log/tidb-plex.log 2>&1
+30 7 * * *  PLEX_SYNC_STATE_DIR=/var/lib/plex-sync /usr/local/bin/plex-sync schedule --once --yes >>/var/log/plex-sync.log 2>&1
 ```
 
 A run that finds nothing to do is not an error. One that fails exits non-zero
@@ -209,14 +209,14 @@ and logs why; cron will mail that to you if the machine can send mail.
 The image holds its own schedule, so the container is the whole setup:
 
 ```bash
-docker run -d --name tidb-plex --restart=unless-stopped \
+docker run -d --name plex-sync --restart=unless-stopped \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server:/plex:ro" \
-  -v /mnt/cache/appdata/tidb-plex:/state \
+  -v /mnt/cache/appdata/plex-sync:/state \
   -e PLEX_URL=http://172.17.0.1:32400 \
   -e PLEX_TOKEN=xxxxxxxxxxxx \
   -e PLEX_DB="/plex/Plug-in Support/Databases/com.plexapp.plugins.library.db" \
-  -e TIDB_PLEX_SCHEDULE='30 7 * * *' \
-  tidb-plex:latest schedule --yes
+  -e PLEX_SYNC_SCHEDULE='30 7 * * *' \
+  plex-sync:latest schedule --yes
 ```
 
 ### When the container cannot see Plex
@@ -227,15 +227,15 @@ before it does, split the work with a plan file:
 
 ```bash
 # On the host, where Plex is reachable:
-tidb-plex plan --save /mnt/cache/appdata/tidb-plex/plan.json
+plex-sync plan --save /mnt/cache/appdata/plex-sync/plan.json
 
 # In the container, with no route to Plex at all:
 docker run --rm \
-  -v /mnt/cache/appdata/tidb-plex:/state \
+  -v /mnt/cache/appdata/plex-sync:/state \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
   -e PLEX_DB=/db/com.plexapp.plugins.library.db \
   -e PLEX_URL=http://unreachable \
-  tidb-plex:latest apply --plan /state/plan.json --yes --plex-stopped
+  plex-sync:latest apply --plan /state/plan.json --yes --plex-stopped
 ```
 
 `--plex-stopped` is honest here in a way it is not elsewhere: nothing else is
@@ -267,8 +267,8 @@ or mount just `Plug-in Support/Databases` writable on top of a read-only parent.
 There is no shell in the image. To look inside:
 
 ```bash
-docker exec -it tidb-plex /tidb-plex status
-docker logs -f tidb-plex
+docker exec -it plex-sync /plex-sync status
+docker logs -f plex-sync
 ```
 
 The `-v /state` volume holds the ledger, the database backups, undo journals and
@@ -277,8 +277,8 @@ markers from Plex's, and undo needs it.
 
 ### Unraid
 
-The template in `unraid/theintrodb-plex.xml` sets all of this up, including
-`TIDB_PLEX_SCHEDULE` and an option to run once at container start.
+The template in `unraid/plex-sync.xml` sets all of this up, including
+`PLEX_SYNC_SCHEDULE` and an option to run once at container start.
 
 ## Writing while Plex is running
 
@@ -304,10 +304,10 @@ schedule does exactly that.
 
 ## Afterwards
 
-`tidb-plex status` shows what the last runs did, `tidb-plex runs` lists them, and
+`plex-sync status` shows what the last runs did, `plex-sync runs` lists them, and
 
 ```bash
-tidb-plex undo latest --yes
+plex-sync undo latest --yes
 ```
 
 reverts the most recent write, restoring every touched row byte for byte from the

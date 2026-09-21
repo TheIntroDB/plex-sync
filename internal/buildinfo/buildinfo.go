@@ -13,13 +13,13 @@ var (
 	Date = "unknown"
 )
 
-// String renders the version line printed by `tidb-plex version`.
+// String renders the version line printed by `plex-sync version`.
 func String() string {
-	return "tidb-plex " + Version + " (" + Commit + ", " + Date + ", " + runtime.Version() + ")"
+	return "plex-sync " + Version + " (" + Commit + ", " + Date + ", " + runtime.Version() + ")"
 }
 
 // UserAgent is sent with outbound requests, so a server operator can tell which
 // client is talking to them.
 func UserAgent() string {
-	return "tidb-plex/" + Version
+	return "plex-sync/" + Version
 }

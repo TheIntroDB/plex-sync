@@ -1,10 +1,10 @@
-# TheIntroDB – Plex Integration
+# TheIntroDB Plex Integration
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/logo-banner.png">
 </p>
 
-`tidb-plex` fills in Plex's **intro** and **credits** markers from
+`plex-sync` fills in Plex's **intro** and **credits** markers from
 [TheIntroDB](https://theintrodb.org), so Plex does not have to audio-fingerprint
 every file in your library. It is a single binary with a terminal interface and
 a scriptable command line. There is no web interface and no browser involved.
@@ -76,12 +76,12 @@ pending submissions are included in what you get back.
 
 ```bash
 docker run -d --restart=unless-stopped \
-  --name tidb-plex \
+  --name plex-sync \
   -e PLEX_URL=http://plex:32400 \
   -e PLEX_TOKEN=xxxxxxxxxxxx \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server:/plex:ro" \
-  -v "/mnt/cache/appdata/tidb-plex:/state" \
-  theintrodb/tidb-plex:latest schedule --yes
+  -v "/mnt/cache/appdata/plex-sync:/state" \
+  theintrodb/plex-sync:latest schedule --yes
 ```
 
 The Plex database must be mounted at its real, non-FUSE path. On Unraid that
@@ -99,15 +99,15 @@ server, or if you would rather decide what changes before it happens:
 
 ```bash
 # Wherever Plex is reachable: decide, and record the decision.
-tidb-plex plan --save /mnt/cache/appdata/tidb-plex/plan.json
+plex-sync plan --save /mnt/cache/appdata/plex-sync/plan.json
 
 # The container: write exactly that, and nothing else.
 docker run --rm \
-  -v "/mnt/cache/appdata/tidb-plex:/state" \
+  -v "/mnt/cache/appdata/plex-sync:/state" \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
   -e PLEX_URL=http://unreachable \
   -e PLEX_DB=/db/com.plexapp.plugins.library.db \
-  theintrodb/tidb-plex:latest apply --plan /state/plan.json --yes --plex-stopped
+  theintrodb/plex-sync:latest apply --plan /state/plan.json --yes --plex-stopped
 ```
 
 Neither half is trusted on its own: applying a saved plan checks every change
@@ -117,20 +117,20 @@ second time.
 
 ### Unraid
 
-Import the template from `unraid/theintrodb-plex.xml`, or add this repository's
+Import the template from `unraid/plex-sync.xml`, or add this repository's
 template URL to Community Applications. The template asks for the Plex URL, the
 token and the Plex database path, and defaults to a daily run.
 
 ### Prebuilt binaries
 
 Download the archive for your platform from
-[Releases](https://github.com/TheIntroDB/plex-integration/releases), check it
+[Releases](https://github.com/TheIntroDB/plex-sync/releases), check it
 against the published checksums, and put the binary on your `PATH`:
 
 ```bash
-tar xzf tidb-plex_0.1.0_darwin_arm64.tar.gz
+tar xzf plex-sync_0.1.0_darwin_arm64.tar.gz
 shasum -a 256 -c checksums.txt        # or sha256sum on Linux
-sudo install -m 755 tidb-plex /usr/local/bin/
+sudo install -m 755 plex-sync /usr/local/bin/
 ```
 
 The archive also contains the README, the licence, the documentation and the
@@ -143,11 +143,11 @@ output and exit code 137, which looks like a crash for no reason. Clear the flag
 once:
 
 ```bash
-xattr -d com.apple.quarantine $(which tidb-plex)
+xattr -d com.apple.quarantine $(which plex-sync)
 ```
 
 Downloading with `curl` or `git` does not set the flag, so only the browser route
-is affected. `tidb-plex version` printing anything at all, rather than exiting
+is affected. `plex-sync version` printing anything at all, rather than exiting
 137, means it is fine.
 
 Targets: Linux (amd64, arm64, armv7), macOS (amd64, arm64), Windows (amd64,
@@ -156,7 +156,7 @@ arm64) and FreeBSD (amd64, armv7). Linux armv7 is the 32-bit Raspberry Pi build.
 ### Go
 
 ```bash
-go install github.com/TheIntroDB/plex-integration@latest
+go install github.com/TheIntroDB/plex-sync@latest
 ```
 
 The binary has no runtime dependencies and needs no CGO, so it cross-compiles to
@@ -166,7 +166,7 @@ Linux, macOS and Windows on both amd64 and arm64.
 
 ## Usage
 
-Run `tidb-plex` with no arguments in a terminal and you get the interface:
+Run `plex-sync` with no arguments in a terminal and you get the interface:
 
 | key | screen |
 | --- | --- |
@@ -181,17 +181,17 @@ Run `tidb-plex` with no arguments in a terminal and you get the interface:
 The same work is available as commands, for cron and scripts:
 
 ```bash
-tidb-plex config check          # validate configuration and reach both services
-tidb-plex library               # list matched items and the ids used for lookups
-tidb-plex plan --show "the last of us"   # what a run would change, for one show
-tidb-plex plan --save plan.json  # ...and save it, to write later without Plex
-tidb-plex apply --yes           # write the markers (--dry-run to preview)
-tidb-plex apply --plan plan.json --yes   # write a saved plan, without contacting Plex
-tidb-plex undo latest --yes     # revert the most recent run
-tidb-plex status                # ledger, quota and recent runs
-tidb-plex sync --yes            # inventory, fetch, plan and apply, once
-tidb-plex schedule --yes        # the same, on a schedule the process holds itself
-tidb-plex api serve             # local JSON API, OpenAPI schema at /openapi.json
+plex-sync config check          # validate configuration and reach both services
+plex-sync library               # list matched items and the ids used for lookups
+plex-sync plan --show "the last of us"   # what a run would change, for one show
+plex-sync plan --save plan.json  # ...and save it, to write later without Plex
+plex-sync apply --yes           # write the markers (--dry-run to preview)
+plex-sync apply --plan plan.json --yes   # write a saved plan, without contacting Plex
+plex-sync undo latest --yes     # revert the most recent run
+plex-sync status                # ledger, quota and recent runs
+plex-sync sync --yes            # inventory, fetch, plan and apply, once
+plex-sync schedule --yes        # the same, on a schedule the process holds itself
+plex-sync api serve             # local JSON API, OpenAPI schema at /openapi.json
 ```
 
 Add `--json` to any command for machine-readable output.
@@ -199,9 +199,9 @@ Add `--json` to any command for machine-readable output.
 ### Scheduling
 
 ```bash
-tidb-plex schedule --yes                       # daily at 07:30, by default
-tidb-plex schedule --cron '0 5 * * *' --yes    # or whenever you want
-tidb-plex schedule --print-next                # check an expression first
+plex-sync schedule --yes                       # daily at 07:30, by default
+plex-sync schedule --cron '0 5 * * *' --yes    # or whenever you want
+plex-sync schedule --print-next                # check an expression first
 ```
 
 The process holds its own schedule, so nothing extra is needed: no cron daemon
@@ -211,7 +211,7 @@ database. If you would rather your own scheduler owned it, `sync --yes` and
 `schedule --once --yes` are both single passes:
 
 ```cron
-30 7 * * * /usr/local/bin/tidb-plex schedule --once --yes >>/var/log/tidb-plex.log 2>&1
+30 7 * * * /usr/local/bin/plex-sync schedule --once --yes >>/var/log/plex-sync.log 2>&1
 ```
 
 See [docs/scheduling.md](docs/scheduling.md) for systemd, launchd, Task
@@ -222,10 +222,10 @@ Scheduler, cron and container arrangements.
 ## Configuration
 
 Configuration is a TOML file, overridden by environment variables and then by
-flags. Run `tidb-plex config init` to write a commented example.
+flags. Run `plex-sync config init` to write a commented example.
 
-Lookup order: `$TIDB_PLEX_CONFIG`, `./tidb-plex.toml`,
-`$XDG_CONFIG_HOME/tidb-plex/config.toml`, `/etc/tidb-plex/config.toml`.
+Lookup order: `$PLEX_SYNC_CONFIG`, `./plex-sync.toml`,
+`$XDG_CONFIG_HOME/plex-sync/config.toml`, `/etc/plex-sync/config.toml`.
 
 | key | default | meaning |
 | --- | --- | --- |
@@ -244,11 +244,11 @@ Lookup order: `$TIDB_PLEX_CONFIG`, `./tidb-plex.toml`,
 | `apply.policy` | `fill` | `fill` keeps Plex's markers; `prefer-theintrodb` replaces them |
 | `apply.allow_live` | `false` | write while Plex is running, if nobody is streaming |
 | `apply.backup` | `true` | back up the database before the first write |
-| `state_dir` | `~/.config/tidb-plex` | ledger, backups and undo journals |
+| `state_dir` | `~/.config/plex-sync` | ledger, backups and undo journals |
 
 Environment variables: `PLEX_URL`, `PLEX_TOKEN`, `PLEX_DB`, `PLEX_CONFIG_DIR`,
-`TIDB_API_KEY`, `TIDB_API_URL`, `TIDB_PLEX_STATE_DIR`, `TIDB_PLEX_LOG_LEVEL`,
-`TIDB_PLEX_CHAPTERS`, `TIDB_PLEX_DETECTION`, `TIDB_PLEX_ALLOW_LIVE`.
+`TIDB_API_KEY`, `TIDB_API_URL`, `PLEX_SYNC_STATE_DIR`, `PLEX_SYNC_LOG_LEVEL`,
+`PLEX_SYNC_CHAPTERS`, `PLEX_SYNC_DETECTION`, `PLEX_SYNC_ALLOW_LIVE`.
 
 ---
 
@@ -305,8 +305,8 @@ cannot be told apart from a speed-up, so they are left alone.
 ## Troubleshooting
 
 **No markers appear.** Markers are written by a run, not on playback. Check
-`tidb-plex plan` to see what a run intends to do, and that your items have a
-TMDb or IMDb id (`tidb-plex library`).
+`plex-sync plan` to see what a run intends to do, and that your items have a
+TMDb or IMDb id (`plex-sync library`).
 
 **"cannot confirm whether Plex is running".** Plex's process was not visible and
 its HTTP endpoint did not answer. Fix `plex.url`, or stop Plex and pass
@@ -330,7 +330,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md) for more.
 ## Development
 
 ```bash
-make build     # build ./bin/tidb-plex
+make build     # build ./bin/plex-sync
 make test      # go test ./...
 make test-live # the tests that need a real Plex database copy
 make lint      # gofumpt + go vet, pinned in the Makefile

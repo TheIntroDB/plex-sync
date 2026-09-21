@@ -43,8 +43,8 @@ func TestRunOnStartDefaultsToOff(t *testing.T) {
 }
 
 func TestScheduleFromTheEnvironment(t *testing.T) {
-	t.Setenv("TIDB_PLEX_SCHEDULE", "0 5 * * *")
-	t.Setenv("TIDB_PLEX_RUN_ON_START", "true")
+	t.Setenv("PLEX_SYNC_SCHEDULE", "0 5 * * *")
+	t.Setenv("PLEX_SYNC_RUN_ON_START", "true")
 
 	cfg := Default()
 	cfg.applyEnv()

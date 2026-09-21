@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/api"
-	"github.com/TheIntroDB/plex-integration/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/api"
+	"github.com/TheIntroDB/plex-sync/internal/app"
 )
 
 func newAPICmd(g *globals) *cobra.Command {

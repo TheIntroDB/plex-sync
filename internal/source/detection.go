@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // FrameSeconds is how much audio one chromaprint frame covers.
@@ -97,7 +97,7 @@ func (f *Fingerprinter) Fingerprint(ctx context.Context, path string, windowSeco
 	if tmpDir == "" {
 		tmpDir = os.TempDir()
 	}
-	tmp, err := os.CreateTemp(tmpDir, "tidb-plex-*.wav")
+	tmp, err := os.CreateTemp(tmpDir, "plex-sync-*.wav")
 	if err != nil {
 		return nil, 0, fmt.Errorf("create temporary audio file: %w", err)
 	}

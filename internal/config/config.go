@@ -18,11 +18,11 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/TheIntroDB/plex-integration/internal/schedule"
+	"github.com/TheIntroDB/plex-sync/internal/schedule"
 )
 
 // EnvConfig names the variable that points at a config file.
-const EnvConfig = "TIDB_PLEX_CONFIG"
+const EnvConfig = "PLEX_SYNC_CONFIG"
 
 // PlexDBName is the Plex database file name.
 const PlexDBName = "com.plexapp.plugins.library.db"
@@ -233,9 +233,9 @@ func Default() *Config {
 // defaultStateDir puts state next to the user's other application data.
 func defaultStateDir() string {
 	if dir, err := os.UserConfigDir(); err == nil {
-		return filepath.Join(dir, "tidb-plex")
+		return filepath.Join(dir, "plex-sync")
 	}
-	return ".tidb-plex"
+	return ".plex-sync"
 }
 
 // MinDelay is the minimum spacing between API requests.
@@ -450,7 +450,7 @@ func (s Segments) EnabledTypes() []string {
 
 // LedgerPath is the SQLite file holding lookups, applied markers and runs.
 func (c *Config) LedgerPath() string {
-	return filepath.Join(c.StateDir, "tidb-plex.db")
+	return filepath.Join(c.StateDir, "plex-sync.db")
 }
 
 // BackupDir is where Plex database backups are written.
@@ -480,12 +480,12 @@ func CandidatePaths() []string {
 		out = append(out, v)
 	}
 	if cwd, err := os.Getwd(); err == nil {
-		out = append(out, filepath.Join(cwd, "tidb-plex.toml"))
+		out = append(out, filepath.Join(cwd, "plex-sync.toml"))
 	}
 	if dir, err := os.UserConfigDir(); err == nil {
-		out = append(out, filepath.Join(dir, "tidb-plex", "config.toml"))
+		out = append(out, filepath.Join(dir, "plex-sync", "config.toml"))
 	}
-	out = append(out, "/etc/tidb-plex/config.toml")
+	out = append(out, "/etc/plex-sync/config.toml")
 	return out
 }
 
@@ -577,20 +577,20 @@ func (c *Config) applyEnv() {
 	str("TIDB_API_URL", &c.TheIntroDB.BaseURL)
 	integer("TIDB_DAILY_BUDGET", &c.TheIntroDB.DailyBudget)
 
-	str("TIDB_PLEX_STATE_DIR", &c.StateDir)
-	str("TIDB_PLEX_LOG_LEVEL", &c.LogLevel)
-	str("TIDB_PLEX_API_ADDR", &c.API.Addr)
-	boolean("TIDB_PLEX_API_ENABLED", &c.API.Enabled)
+	str("PLEX_SYNC_STATE_DIR", &c.StateDir)
+	str("PLEX_SYNC_LOG_LEVEL", &c.LogLevel)
+	str("PLEX_SYNC_API_ADDR", &c.API.Addr)
+	boolean("PLEX_SYNC_API_ENABLED", &c.API.Enabled)
 
-	boolean("TIDB_PLEX_CHAPTERS", &c.Sources.Chapters)
-	boolean("TIDB_PLEX_DETECTION", &c.Sources.Detection)
-	boolean("TIDB_PLEX_ALLOW_LIVE", &c.Apply.AllowLive)
-	boolean("TIDB_PLEX_CREATE_MARKER_TAG", &c.Apply.CreateMissingMarkerTag)
+	boolean("PLEX_SYNC_CHAPTERS", &c.Sources.Chapters)
+	boolean("PLEX_SYNC_DETECTION", &c.Sources.Detection)
+	boolean("PLEX_SYNC_ALLOW_LIVE", &c.Apply.AllowLive)
+	boolean("PLEX_SYNC_CREATE_MARKER_TAG", &c.Apply.CreateMissingMarkerTag)
 
-	str("TIDB_PLEX_SCHEDULE", &c.Schedule.Cron)
-	boolean("TIDB_PLEX_RUN_ON_START", &c.Schedule.RunOnStart)
+	str("PLEX_SYNC_SCHEDULE", &c.Schedule.Cron)
+	boolean("PLEX_SYNC_RUN_ON_START", &c.Schedule.RunOnStart)
 
-	if v, ok := os.LookupEnv("TIDB_PLEX_SOURCES"); ok {
+	if v, ok := os.LookupEnv("PLEX_SYNC_SOURCES"); ok {
 		c.Sources.Order = splitList(v)
 	}
 }
@@ -666,7 +666,7 @@ func (c *Config) CheckDatabase() (string, error) {
 	if path == "" {
 		return "", errors.New(
 			"Plex database not found: set plex.database or plex.config_dir " +
-				"(PLEX_DB / PLEX_CONFIG_DIR), or run `tidb-plex config check`")
+				"(PLEX_DB / PLEX_CONFIG_DIR), or run `plex-sync config check`")
 	}
 	st, err := os.Stat(path)
 	if err != nil {
@@ -709,10 +709,10 @@ func DiscoverPlexDir() string {
 
 // Example returns a commented config file body, for `config init`.
 func Example() string {
-	return `# tidb-plex configuration.
+	return `# plex-sync configuration.
 # Every value here is optional; the defaults shown are the built-in ones.
 # Environment variables override this file (PLEX_URL, PLEX_TOKEN, PLEX_DB,
-# PLEX_CONFIG_DIR, TIDB_API_KEY, TIDB_API_URL, TIDB_PLEX_STATE_DIR).
+# PLEX_CONFIG_DIR, TIDB_API_KEY, TIDB_API_URL, PLEX_SYNC_STATE_DIR).
 
 # Top-level keys must come before the first section header, or TOML reads them
 # as part of that section.

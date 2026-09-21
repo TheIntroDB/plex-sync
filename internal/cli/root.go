@@ -18,9 +18,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/config"
-	"github.com/TheIntroDB/plex-integration/internal/logging"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/config"
+	"github.com/TheIntroDB/plex-sync/internal/logging"
 )
 
 // Exit codes. They are stable because scripts branch on them.
@@ -51,7 +51,7 @@ func Execute() int {
 		if errors.As(err, &silent) {
 			return silent.code
 		}
-		fmt.Fprintf(os.Stderr, "tidb-plex: %v\n", err)
+		fmt.Fprintf(os.Stderr, "plex-sync: %v\n", err)
 		return ExitError
 	}
 	return ExitOK
@@ -77,10 +77,10 @@ func NewRoot() *cobra.Command {
 	g := &globals{}
 
 	root := &cobra.Command{
-		Use:   "tidb-plex",
+		Use:   "plex-sync",
 		Short: "Skip intros, recaps and credits in Plex with TheIntroDB",
 		Long: strings.TrimSpace(`
-tidb-plex fills in Plex's intro and credits markers from TheIntroDB, so Plex
+plex-sync fills in Plex's intro and credits markers from TheIntroDB, so Plex
 does not have to fingerprint every file in your library.
 
 Run it with no arguments in a terminal to get the interactive interface, or use

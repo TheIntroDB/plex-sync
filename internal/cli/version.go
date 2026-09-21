@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TheIntroDB/plex-integration/internal/buildinfo"
+	"github.com/TheIntroDB/plex-sync/internal/buildinfo"
 )
 
 func newVersionCmd() *cobra.Command {

@@ -143,6 +143,26 @@ func TestLoadRejectsInvalidTOML(t *testing.T) {
 	}
 }
 
+// isolateConfigSearch points every config location CandidatePaths consults at
+// empty temporary directories.
+//
+// Without this the test depends on the machine it runs on: anyone who has
+// actually installed a config file gets a spurious failure. Set HOME, the
+// platform config variable and the working directory, because between them they
+// are what discovery is built from.
+func isolateConfigSearch(t *testing.T) {
+	t.Helper()
+	t.Setenv(EnvConfig, "")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)                                  // macOS and Linux
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg")) // Linux
+	t.Setenv("AppData", filepath.Join(home, "AppData"))     // Windows
+
+	// The working directory is a candidate too, so run from somewhere empty.
+	t.Chdir(t.TempDir())
+}
+
 // A container with no configuration file must still run. But naming a path that
 // does not exist is a typo, and falling back to the defaults silently would hide
 // it.
@@ -157,9 +177,8 @@ func TestMissingConfigFile(t *testing.T) {
 	})
 
 	t.Run("no file at all is fine", func(t *testing.T) {
-		// Point discovery at a directory with nothing in it, so no candidate
-		// config file exists.
-		t.Setenv(EnvConfig, "")
+		isolateConfigSearch(t)
+
 		cfg, err := Load("")
 		if err != nil {
 			t.Fatalf("a container with no config file must still run: %v", err)
@@ -265,14 +284,14 @@ func TestExampleConfigIsValid(t *testing.T) {
 
 func TestStatePathsLiveUnderTheStateDirectory(t *testing.T) {
 	cfg := Default()
-	cfg.StateDir = "/var/lib/tidb-plex"
+	cfg.StateDir = "/var/lib/plex-sync"
 	for name, got := range map[string]string{
 		"ledger":      cfg.LedgerPath(),
 		"backups":     cfg.BackupDir(),
 		"undo":        cfg.UndoDir(),
 		"fingerprint": cfg.FingerprintDir(),
 	} {
-		if !strings.HasPrefix(got, "/var/lib/tidb-plex") {
+		if !strings.HasPrefix(got, "/var/lib/plex-sync") {
 			t.Errorf("%s path %q escaped the state directory", name, got)
 		}
 	}
@@ -287,10 +306,10 @@ func TestCandidatePathsAreOrderedMostSpecificFirst(t *testing.T) {
 		t.Fatal("expected candidate paths")
 	}
 	if paths[0] != filepath.Join(dir, "explicit.toml") {
-		t.Errorf("first candidate = %q, want the explicit TIDB_PLEX_CONFIG value", paths[0])
+		t.Errorf("first candidate = %q, want the explicit PLEX_SYNC_CONFIG value", paths[0])
 	}
 	joined := strings.Join(paths, "\n")
-	if !strings.Contains(joined, "tidb-plex.toml") {
+	if !strings.Contains(joined, "plex-sync.toml") {
 		t.Error("the working directory must be considered")
 	}
 
@@ -300,11 +319,11 @@ func TestCandidatePathsAreOrderedMostSpecificFirst(t *testing.T) {
 	if err != nil {
 		t.Skipf("no user config dir on this platform: %v", err)
 	}
-	want := filepath.Join(configDir, "tidb-plex", "config.toml")
+	want := filepath.Join(configDir, "plex-sync", "config.toml")
 	if !strings.Contains(joined, want) {
 		t.Errorf("candidate paths %v do not include %q", paths, want)
 	}
-	if !strings.Contains(joined, filepath.Join(string(filepath.Separator), "etc", "tidb-plex", "config.toml")) {
+	if !strings.Contains(joined, filepath.Join(string(filepath.Separator), "etc", "plex-sync", "config.toml")) {
 		t.Error("a system-wide location must be considered for service installs")
 	}
 }

@@ -27,7 +27,7 @@ internal/cli/               cobra commands
 
 ```bash
 make tools              # install the pinned formatter
-make build              # build ./bin/tidb-plex
+make build              # build ./bin/plex-sync
 make test               # go test ./...
 make test-race          # ...with the race detector
 make test-live          # the tests that need a real Plex database copy

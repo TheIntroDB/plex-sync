@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TheIntroDB/plex-integration/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
 // The bytes Plex expects in taggings.extra_data for a marker row. These are

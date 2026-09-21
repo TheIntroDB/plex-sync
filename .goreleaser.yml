@@ -4,7 +4,7 @@
 
 version: 2
 
-project_name: tidb-plex
+project_name: plex-sync
 
 before:
   hooks:
@@ -12,18 +12,18 @@ before:
     - go test ./...
 
 builds:
-  - id: tidb-plex
+  - id: plex-sync
     main: .
-    binary: tidb-plex
+    binary: plex-sync
     env:
       - CGO_ENABLED=0
     flags:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/TheIntroDB/plex-integration/internal/buildinfo.Version={{.Version}}
-      - -X github.com/TheIntroDB/plex-integration/internal/buildinfo.Commit={{.Commit}}
-      - -X github.com/TheIntroDB/plex-integration/internal/buildinfo.Date={{.Date}}
+      - -X github.com/TheIntroDB/plex-sync/internal/buildinfo.Version={{.Version}}
+      - -X github.com/TheIntroDB/plex-sync/internal/buildinfo.Commit={{.Commit}}
+      - -X github.com/TheIntroDB/plex-sync/internal/buildinfo.Date={{.Date}}
     goos:
       - linux
       - darwin
@@ -85,9 +85,9 @@ release:
     ## Installing
 
     ```bash
-    tar xzf tidb-plex_{{ .Version }}_<os>_<arch>.tar.gz
+    tar xzf plex-sync_{{ .Version }}_<os>_<arch>.tar.gz
     shasum -a 256 -c checksums.txt        # or sha256sum on Linux
-    sudo install -m 755 tidb-plex /usr/local/bin/
+    sudo install -m 755 plex-sync /usr/local/bin/
     ```
 
     Targets: `linux_amd64` `linux_arm64` `linux_arm` (32-bit Raspberry Pi)
@@ -101,10 +101,10 @@ release:
     exit code 137, which looks like a crash for no reason. Clear the flag once:
 
     ```bash
-    xattr -d com.apple.quarantine $(which tidb-plex)
+    xattr -d com.apple.quarantine $(which plex-sync)
     ```
 
-    `curl` does not set the flag. `tidb-plex version` printing a version, rather
+    `curl` does not set the flag. `plex-sync version` printing a version, rather
     than exiting 137, means it is fine.
 
     ## Container image
@@ -115,5 +115,5 @@ release:
       -e PLEX_TOKEN=... \
       -v "/path/to/Plex Media Server:/plex:ro" \
       -v /path/to/state:/state \
-      theintrodb/tidb-plex:{{ .Tag }} tui
+      theintrodb/plex-sync:{{ .Tag }} tui
     ```

@@ -89,7 +89,7 @@ jobs:
         if: github.event_name != 'push' || inputs.snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: tidb-plex-snapshot
+          name: plex-sync-snapshot
           path: dist/*
           retention-days: 14
           if-no-files-found: error

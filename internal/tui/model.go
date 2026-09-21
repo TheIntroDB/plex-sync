@@ -13,11 +13,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/TheIntroDB/plex-integration/internal/app"
-	"github.com/TheIntroDB/plex-integration/internal/ledger"
-	"github.com/TheIntroDB/plex-integration/internal/model"
-	"github.com/TheIntroDB/plex-integration/internal/sync"
-	"github.com/TheIntroDB/plex-integration/internal/tidb"
+	"github.com/TheIntroDB/plex-sync/internal/app"
+	"github.com/TheIntroDB/plex-sync/internal/ledger"
+	"github.com/TheIntroDB/plex-sync/internal/model"
+	"github.com/TheIntroDB/plex-sync/internal/sync"
+	"github.com/TheIntroDB/plex-sync/internal/tidb"
 )
 
 // screen identifies a page of the interface.
