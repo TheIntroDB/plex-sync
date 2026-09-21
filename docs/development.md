@@ -144,11 +144,31 @@ matching maths is covered even where no media is available.
 
 - Unit tests never touch the network. Both HTTP clients take an injectable
   fiber client, and the tests point them at a `testdata` server or a stub.
-- `internal/plex/testdata/` holds a synthetic Plex database built from the real
-  schema. Write tests copy it to a temporary directory first.
-- Live API checks are in `internal/tidb/live_test.go`, skipped unless
-  `TIDB_LIVE=1`.
+- `internal/plex/*/testdata/` holds synthetic databases built from the real
+  schemas. Write tests copy them to a temporary directory first.
+
+### Tests against real data
+
+Some things cannot be tested synthetically, because the point of them is what a
+real Plex database contains. Those tests are skipped unless an environment
+variable points at a copy:
+
+```bash
+scripts/live-e2e.sh                       # finds Plex's database itself
+scripts/live-e2e.sh /path/to/library.db   # or names one
+```
+
+The script copies the database, removes the schema objects that only Plex's own
+SQLite can parse, creates the marker tag Plex would have created, and runs the
+live tests in `internal/plexdb`. The source database is never opened for
+writing. See the comments at the top of the script for why each step is needed.
+
+Live TheIntroDB checks work the same way:
 
 ```bash
 TIDB_LIVE=1 go test ./internal/tidb/ -run Live -v
 ```
+
+Both kinds are worth running before a release. Every defect they guard against
+was found by running against the real thing, and none of them was reproducible
+against the synthetic fixtures.
