@@ -237,6 +237,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 		return nil
 
+	case "tag_insert":
+		id := rowInt(op, "tag_id")
+		if id == 0 {
+			return fmt.Errorf("plexdb: undo tag_insert without a tag id")
+		}
+		// Restricted to the marker tag type, so a wrong id in a journal can
+		// never delete a tag that carries real metadata.
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM tags WHERE id = ? AND tag_type = ?`, id, TagTypeMarker); err != nil {
+			return fmt.Errorf("plexdb: undo tag_insert %d: %w", id, err)
+		}
+		return nil
+
 	case "extra":
 		partID := rowInt(op, "part_id")
 		if partID == 0 {

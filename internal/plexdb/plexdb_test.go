@@ -454,7 +454,7 @@ func TestRewriteExtraBuildsMarkerMembers(t *testing.T) {
 			} `json:"MediaPartMarker"`
 		} `json:"MediaPartMarkersArray"`
 	}
-	if err := json.Unmarshal(decoded["pv:intros"], &introMember); err != nil {
+	if err := json.Unmarshal([]byte(memberString(t, decoded["pv:intros"])), &introMember); err != nil {
 		t.Fatalf("pv:intros: %v (%s)", err, decoded["pv:intros"])
 	}
 	array := introMember.MediaPartMarkersArray
@@ -476,7 +476,7 @@ func TestRewriteExtraBuildsMarkerMembers(t *testing.T) {
 			} `json:"MediaPartMarker"`
 		} `json:"MediaPartMarkersArray"`
 	}
-	if err := json.Unmarshal(decoded["pv:credits"], &creditsMember); err != nil {
+	if err := json.Unmarshal([]byte(memberString(t, decoded["pv:credits"])), &creditsMember); err != nil {
 		t.Fatalf("pv:credits: %v (%s)", err, decoded["pv:credits"])
 	}
 	cm := creditsMember.MediaPartMarkersArray
@@ -500,10 +500,10 @@ func TestRewriteExtraBuildsMarkerMembers(t *testing.T) {
 	if pairs["duration"] != "2825000" || pairs["pv:version"] != "5" {
 		t.Fatalf("url member scalars: %+v", pairs)
 	}
-	if pairs["pv:intros"] != string(decoded["pv:intros"]) {
+	if pairs["pv:intros"] != memberString(t, decoded["pv:intros"]) {
 		t.Fatalf("url member pv:intros %q does not match the member %s", pairs["pv:intros"], decoded["pv:intros"])
 	}
-	if pairs["pv:credits"] != string(decoded["pv:credits"]) {
+	if pairs["pv:credits"] != memberString(t, decoded["pv:credits"]) {
 		t.Fatalf("url member pv:credits %q does not match the member %s", pairs["pv:credits"], decoded["pv:credits"])
 	}
 }
@@ -525,7 +525,7 @@ func TestRewriteExtraEmptyMarkerSets(t *testing.T) {
 			MediaPartMarker any    `json:"MediaPartMarker"`
 		} `json:"MediaPartMarkersArray"`
 	}
-	if err := json.Unmarshal(decoded["pv:intros"], &introMember); err != nil {
+	if err := json.Unmarshal([]byte(memberString(t, decoded["pv:intros"])), &introMember); err != nil {
 		t.Fatalf("pv:intros: %v", err)
 	}
 	if marker, ok := introMember.MediaPartMarkersArray.MediaPartMarker.(string); !ok || marker != "" {
@@ -533,7 +533,7 @@ func TestRewriteExtraEmptyMarkerSets(t *testing.T) {
 	}
 
 	var creditsMember map[string]json.RawMessage
-	if err := json.Unmarshal(decoded["pv:credits"], &creditsMember); err != nil {
+	if err := json.Unmarshal([]byte(memberString(t, decoded["pv:credits"])), &creditsMember); err != nil {
 		t.Fatalf("pv:credits: %v", err)
 	}
 	array, ok := creditsMember["MediaPartMarkersArray"]

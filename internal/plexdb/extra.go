@@ -19,14 +19,14 @@ import (
 // encodes for media_parts.extra_data.
 const (
 	// extraIntro is an intro marker at payload version 5.
-	extraIntro = `{"pv:version":5,"url":"pv%3Aversion=5"}`
+	extraIntro = `{"pv:version":"5","url":"pv%3Aversion=5"}`
 
 	// extraCredits is a non-final credits marker at payload version 4.
-	extraCredits = `{"pv:version":4,"url":"pv%3Aversion=4"}`
+	extraCredits = `{"pv:version":"4","url":"pv%3Aversion=4"}`
 
 	// extraCreditsFinal is the credits marker Plex treats as the end of the
 	// item, which is what raises the Up Next prompt. It carries pv:final 1.
-	extraCreditsFinal = `{"pv:final":1,"pv:version":4,"url":"pv%3Afinal=1&pv%3Aversion=4"}`
+	extraCreditsFinal = `{"pv:final":"1","pv:version":"4","url":"pv%3Afinal=1&pv%3Aversion=4"}`
 )
 
 // extraURLMember is the member of media_parts.extra_data that holds every other
@@ -176,16 +176,16 @@ func creditsExtraMember(credits []model.Marker) map[string]any {
 	copy(sorted, credits)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].StartMS < sorted[j].StartMS })
 
-	last := len(sorted) - 1
+	// The final flag is the planner's decision, not the writer's. Marking the
+	// last credits marker final by default would tell Plex an item ends where
+	// it does not, and would disagree with the payload written to taggings for
+	// the same marker.
 	finalIndex := -1
 	for i, m := range sorted {
 		if m.Final {
 			finalIndex = i
 			break
 		}
-	}
-	if finalIndex < 0 {
-		finalIndex = last
 	}
 
 	list := make([]any, 0, len(sorted))
@@ -251,19 +251,23 @@ func encodeExtraMembers(members map[string]any) string {
 		}
 		b.Write(key)
 		b.WriteByte(':')
+
+		value := members[name]
 		if name == extraURLMember {
-			value, err := jsonEncode(pairs.String())
-			if err != nil {
-				continue
-			}
-			b.Write(value)
-			continue
+			value = pairs.String()
+		} else if stringifyNested(value) {
+			// Plex stores nested values as JSON strings, not as nested objects:
+			// a real row holds "pv:chapters":"{\"Chapters\":{}}". Emitting an
+			// object here would produce a row that no version of Plex has ever
+			// written. Scalars are left as they are, so a value Plex stored as a
+			// number does not silently become a string.
+			value = stringifyMember(value)
 		}
-		value, err := jsonEncode(members[name])
+		encoded, err := jsonEncode(value)
 		if err != nil {
 			continue
 		}
-		b.Write(value)
+		b.Write(encoded)
 	}
 	b.WriteByte('}')
 	return b.String()
@@ -280,6 +284,25 @@ func jsonEncode(v any) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// stringifyNested reports whether a member value has to be stored as a JSON
+// string rather than as itself.
+//
+// Plex writes nested values as strings. Copying a real row out of a database
+// shows "pv:chapters" holding the characters {"Chapters":{}} rather than a
+// nested object, and rebuilding that row has to produce the same thing or the
+// row stops looking like anything Plex ever wrote.
+func stringifyNested(v any) bool {
+	switch t := v.(type) {
+	case map[string]any, []any, map[string]string, []string:
+		return true
+	case json.RawMessage:
+		trimmed := bytes.TrimSpace(t)
+		return len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[')
+	default:
+		return false
+	}
 }
 
 // stringifyMember renders one member value for the url query string: a string

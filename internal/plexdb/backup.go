@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"modernc.org/sqlite"
 )
 
 // BackupPrefix names the copies Backup writes.
@@ -17,8 +19,13 @@ const BackupPrefix = "library.db.pre-tidb-"
 //
 // The copy is a single step, not a paged incremental one: an incremental backup
 // restarts every time Plex writes to the database, so against a live server it
-// can loop forever and never finish. VACUUM INTO writes the whole file in one
-// pass and is safe to run while Plex is running.
+// can loop forever and never finish.
+//
+// The copy is taken with SQLite's own online backup API rather than VACUUM INTO.
+// VACUUM INTO rebuilds the schema, and a real Plex database uses ICU collations
+// ("icu_root") that a Go build of SQLite does not implement, so it fails with
+// "no such collation sequence" against every production database. The backup API
+// copies pages and never has to interpret the schema, so it works.
 //
 // The destination is destDir/<BackupPrefix><UTC stamp> with the colons and dots
 // taken out of the stamp, so the copies sort in the order they were made. The
@@ -44,19 +51,11 @@ func Backup(dbPath, destDir string, keep int) (string, error) {
 		return "", err
 	}
 
-	src, err := OpenDB(dbPath, false)
-	if err != nil {
-		return "", err
-	}
-	defer src.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	// VACUUM INTO refuses to overwrite, hence the unique name above. It cannot
-	// run inside a transaction, and none has been opened on this connection.
-	if _, err := src.db.ExecContext(ctx, `VACUUM INTO ?`, dest); err != nil {
-		os.Remove(dest)
+	if err := copyDatabase(ctx, dbPath, dest); err != nil {
+		_ = os.Remove(dest)
 		return "", fmt.Errorf("plexdb: backup %s to %s: %w", dbPath, dest, err)
 	}
 
@@ -64,6 +63,53 @@ func Backup(dbPath, destDir string, keep int) (string, error) {
 		return dest, err
 	}
 	return dest, nil
+}
+
+// backupSource is the online-backup entry point the pure-Go driver exposes on a
+// connection. The concrete type is unexported, so this interface is how it is
+// reached from a database/sql connection.
+type backupSource interface {
+	NewBackup(dstURI string) (*sqlite.Backup, error)
+}
+
+// copyDatabase copies a live SQLite database to a new file.
+func copyDatabase(ctx context.Context, dbPath, dest string) error {
+	src, err := OpenDB(dbPath, true)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	conn, err := src.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("plexdb: backup connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	return conn.Raw(func(driverConn any) error {
+		backer, ok := driverConn.(backupSource)
+		if !ok {
+			return fmt.Errorf("plexdb: this build of the SQLite driver cannot take online backups")
+		}
+		backup, err := backer.NewBackup(dest)
+		if err != nil {
+			return err
+		}
+		// A negative page count copies everything outstanding in one call. It
+		// can still report "more to do" while Plex is writing, so it is looped
+		// rather than assumed to finish in one pass.
+		for {
+			more, err := backup.Step(-1)
+			if err != nil {
+				_ = backup.Finish()
+				return err
+			}
+			if !more {
+				break
+			}
+		}
+		return backup.Finish()
+	})
 }
 
 // backupStamp renders a UTC time the way backup names carry it: RFC3339 with

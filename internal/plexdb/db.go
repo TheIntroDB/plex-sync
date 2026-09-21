@@ -117,10 +117,109 @@ func (d *DB) Path() string { return d.path }
 // read-only inventory queries). Writes should go through ApplyPlans.
 func (d *DB) SQL() *sql.DB { return d.db }
 
-// MarkerTagID returns the id of the tag marker rows hang off. Plex has one tag
-// row per marker kind ("intro", "credits", "commercial") but they all share
-// tag_type 12; the lowest id is returned, which is the one every writer in this
-// space uses as the default.
+// MarkerTagName is the name given to the marker tag this tool creates when Plex
+// has not made one.
+//
+// The name is cosmetic. Plex's marker lookup filters on tag_type, and the marker
+// kind lives in taggings.text, so the tag's own name is never read back. It is
+// set to something a human reading the table will recognise.
+const MarkerTagName = "Intro"
+
+// MarkerTagIDOrCreate returns the marker tag, creating it when the database has
+// none.
+//
+// Plex creates that row the first time it writes a marker itself, but writing
+// markers is a Plex Pass feature: on a server without it, Plex never creates one
+// and never will, and a tool like this is the only thing that ever would. So the
+// row is created on request rather than leaving the tool unable to write
+// anything at all on such a server.
+//
+// The stated rule is that Plex's schema is not ours to invent, which is why this
+// is opt-in and why the row is journalled like any other change.
+func (d *DB) MarkerTagIDOrCreate(ctx context.Context, j *Journal) (int64, error) {
+	if id, err := d.MarkerTagID(); err == nil {
+		return id, nil
+	}
+
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("plexdb: create the marker tag: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var id int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(id), 0) + 1 FROM tags`).Scan(&id); err != nil {
+		return 0, fmt.Errorf("plexdb: next tag id: %w", err)
+	}
+
+	// Journal before the write, like every other change this tool makes, so an
+	// interrupted run leaves nothing behind that cannot be undone.
+	if j != nil {
+		if err := j.Record(map[string]any{
+			"op":       "tag_insert",
+			"tag_id":   id,
+			"tag_type": int64(TagTypeMarker),
+		}); err != nil {
+			return 0, err
+		}
+	}
+
+	now := time.Now().UTC().Unix()
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO tags(id, tag_type, tag, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		id, TagTypeMarker, MarkerTagName, now, now,
+	); err != nil {
+		return 0, missingFTSModuleError(err, d.path)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("plexdb: create the marker tag: %w", err)
+	}
+	return id, nil
+}
+
+// missingFTSModuleError explains the one write this tool cannot make, and why
+// there is no workaround to offer.
+//
+// Plex's tags table carries an FTS4 trigger, and that trigger's table is created
+// with Plex's own ICU tokenizer:
+//
+//	CREATE VIRTUAL TABLE fts4_tag_titles_icu USING fts4(tag, tokenize=collating '...')
+//
+// Any write to tags has to prepare the trigger body, which means opening that
+// table, which means resolving a tokenizer that only the SQLite built into Plex
+// registers. So the statement fails before its WHEN clause is ever considered,
+// and it fails for every SQLite outside Plex: this program's pure-Go build
+// reports "no such module: fts4", and the system sqlite3 command reports
+// "unknown tokenizer: collating". Switching to a CGO build with FTS4 compiled in
+// would not help either.
+//
+// The row therefore has to come from Plex, which creates it the first time it
+// writes a marker of its own. That is a Plex Pass feature. Everything else this
+// tool does goes to taggings and media_parts, which carry no triggers at all.
+func missingFTSModuleError(err error, dbPath string) error {
+	message := err.Error()
+	if !strings.Contains(message, "no such module") &&
+		!strings.Contains(message, "unknown tokenizer") {
+		return fmt.Errorf("plexdb: create the marker tag: %w", err)
+	}
+	return fmt.Errorf(
+		"plexdb: cannot create the marker tag in %s, and no other tool can either.\n\n"+
+			"Plex's tags table has an FTS4 trigger whose table uses Plex's own ICU tokenizer "+
+			"(\"tokenize=collating\"), which only the SQLite inside Plex implements, so any write "+
+			"to that table fails before the trigger's condition is even considered. The system "+
+			"sqlite3 command fails the same way, and so would a build with FTS4 compiled in.\n\n"+
+			"Let Plex create the row: it makes one the first time it writes a marker of its own, "+
+			"which needs Plex Pass. After that, this tool never touches tags again and everything "+
+			"works. Original error: %v", dbPath, err)
+}
+
+// MarkerTagID returns the marker tag Plex uses, when one exists.
+//
+// Plex has one tag row per marker kind ("intro", "credits", "commercial") but
+// they all share tag_type 12, so the lowest id is returned. That is the id used
+// as the default by every tool in this space, and a marker row's own kind comes
+// from its text column, not from which tag it points at.
 func (d *DB) MarkerTagID() (int64, error) {
 	ctx := context.Background()
 	var id int64
