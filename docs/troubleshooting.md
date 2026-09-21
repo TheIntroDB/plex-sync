@@ -107,7 +107,7 @@ TheIntroDB account raises it.
 
 Expected on a large library: a full pass needs more requests than a day allows.
 Progress accumulates, because every answer including a 404 is cached, so each
-day works on new content. See [theintrodb-api.md](theintrodb-api.md).
+day works on new content.
 
 ## Undo
 

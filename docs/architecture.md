@@ -102,6 +102,3 @@ Nothing partial is written. A run plans first, applies in transactions of
 inside its transaction, so an item that changed between planning and writing is
 skipped rather than overwritten. Every operation is journalled to an undo log
 before it is applied, and `undo` replays that log in reverse.
-
-Pacing, budget and failure handling for the API are described in
-[theintrodb-api.md](theintrodb-api.md).

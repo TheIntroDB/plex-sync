@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/TheIntroDB/plex-integration/internal/schedule"
 )
 
 // EnvConfig names the variable that points at a config file.
@@ -47,6 +49,7 @@ type Config struct {
 	Segments   Segments   `toml:"segments"`
 	Apply      Apply      `toml:"apply"`
 	API        API        `toml:"api"`
+	Schedule   Schedule   `toml:"schedule"`
 	StateDir   string     `toml:"state_dir"`
 	LogLevel   string     `toml:"log_level"`
 
@@ -155,6 +158,23 @@ type API struct {
 	Addr    string `toml:"addr"`
 }
 
+// DefaultSchedule is when the container runs itself when nothing else is set.
+//
+// 07:30, because Plex runs its own maintenance at 07:00 and two things writing
+// to the same database is what the backup and the transaction handling exist to
+// avoid.
+const DefaultSchedule = "30 7 * * *"
+
+// Schedule configures the built-in timer.
+type Schedule struct {
+	// Cron is a five-field cron expression, evaluated in local time.
+	Cron string `toml:"cron"`
+	// RunOnStart runs once immediately, before waiting for the first firing.
+	// Off by default: a container being recreated must not decide to write to
+	// the library on its own.
+	RunOnStart bool `toml:"run_on_start"`
+}
+
 // Default returns the built-in configuration.
 func Default() *Config {
 	return &Config{
@@ -200,6 +220,10 @@ func Default() *Config {
 		API: API{
 			Enabled: true,
 			Addr:    "127.0.0.1:8765",
+		},
+		Schedule: Schedule{
+			Cron:       DefaultSchedule,
+			RunOnStart: false,
 		},
 		StateDir: defaultStateDir(),
 		LogLevel: "info",
@@ -563,6 +587,9 @@ func (c *Config) applyEnv() {
 	boolean("TIDB_PLEX_ALLOW_LIVE", &c.Apply.AllowLive)
 	boolean("TIDB_PLEX_CREATE_MARKER_TAG", &c.Apply.CreateMissingMarkerTag)
 
+	str("TIDB_PLEX_SCHEDULE", &c.Schedule.Cron)
+	boolean("TIDB_PLEX_RUN_ON_START", &c.Schedule.RunOnStart)
+
 	if v, ok := os.LookupEnv("TIDB_PLEX_SOURCES"); ok {
 		c.Sources.Order = splitList(v)
 	}
@@ -617,6 +644,15 @@ func (c *Config) Validate() error {
 	}
 	if c.API.Enabled && strings.TrimSpace(c.API.Addr) == "" {
 		problems = append(problems, "api.addr must not be empty when the API is enabled")
+	}
+	// A schedule that cannot be parsed would otherwise be discovered by the
+	// container failing at some later point, or by never running at all.
+	if strings.TrimSpace(c.Schedule.Cron) != "" {
+		if _, err := schedule.ParseCron(c.Schedule.Cron); err != nil {
+			problems = append(problems, "schedule.cron: "+err.Error())
+		}
+	} else {
+		problems = append(problems, "schedule.cron must not be empty")
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -726,5 +762,13 @@ backup = true
 # Local JSON control API (no web interface). Used by the TUI and by scripts.
 enabled = true
 addr = "127.0.0.1:8765"
+
+[schedule]
+# Five fields: minute hour day-of-month month day-of-week, in local time.
+# 07:30, after Plex's own maintenance window at 07:00.
+cron = "30 7 * * *"
+# Run once as soon as the process starts, before waiting for the first firing.
+# Off by default, so recreating a container does not by itself write anything.
+run_on_start = false
 `
 }

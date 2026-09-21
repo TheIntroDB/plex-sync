@@ -133,7 +133,8 @@ tidb-plex plan --show "the last of us"   # what a run would change, for one show
 tidb-plex apply --yes           # write the markers (--dry-run to preview)
 tidb-plex undo latest --yes     # revert the most recent run
 tidb-plex status                # ledger, quota and recent runs
-tidb-plex sync --yes            # inventory, fetch, plan and apply: the cron entry point
+tidb-plex sync --yes            # inventory, fetch, plan and apply, once
+tidb-plex schedule --yes        # the same, on a schedule the process holds itself
 tidb-plex api serve             # local JSON API, OpenAPI schema at /openapi.json
 ```
 
@@ -141,12 +142,24 @@ Add `--json` to any command for machine-readable output.
 
 ### Scheduling
 
-```cron
-30 7 * * * /usr/local/bin/tidb-plex sync --yes >> /var/log/tidb-plex.log 2>&1
+```bash
+tidb-plex schedule --yes                       # daily at 07:30, by default
+tidb-plex schedule --cron '0 5 * * *' --yes    # or whenever you want
+tidb-plex schedule --print-next                # check an expression first
 ```
 
-Run it after Plex's own maintenance window so the two are not fighting over the
-database.
+The process holds its own schedule, so nothing extra is needed: no cron daemon
+and no shell, which is also why the container image can run this way. Run it
+after Plex's own maintenance window so the two are not fighting over the
+database. If you would rather your own scheduler owned it, `sync --yes` and
+`schedule --once --yes` are both single passes:
+
+```cron
+30 7 * * * /usr/local/bin/tidb-plex schedule --once --yes >>/var/log/tidb-plex.log 2>&1
+```
+
+See [docs/scheduling.md](docs/scheduling.md) for systemd, launchd, Task
+Scheduler, cron and container arrangements.
 
 ---
 

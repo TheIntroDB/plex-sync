@@ -114,6 +114,7 @@ without --yes.`),
 		newSyncCmd(g),
 		newUndoCmd(g),
 		newStatusCmd(g),
+		newScheduleCmd(g),
 		newTUICmd(g),
 		newAPICmd(g),
 	)

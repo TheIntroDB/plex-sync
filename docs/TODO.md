@@ -112,10 +112,25 @@ Things that are implemented and unit-tested but have never met the real world.
       library. One endpoint listing accepted media keys since a timestamp would
       replace that with a single request. It needs an indexed `AcceptedAtMs` on
       submissions, which is an API-side change.
-- [ ] **Container image publishing**, and the daily scheduler inside the image.
-      The Unraid template offers a `TIDB_PLEX_SCHEDULE` variable that the
-      entrypoint does not implement yet, so scheduling is done by cron on the
-      host for now.
-- [ ] **Scheduler examples** for systemd, launchd and Windows Task Scheduler.
+- [x] ~~**The daily scheduler**~~ Built, and the container uses it. `schedule`
+      holds its own cron in-process, so the image needs no cron daemon and no
+      shell. `TIDB_PLEX_SCHEDULE` and `TIDB_PLEX_RUN_ON_START` are honoured, and
+      a malformed expression is caught by `config check`. Verified in the
+      container: it finds the database inside the read-only mount, holds the
+      schedule, runs read-only against a live server, opens the database
+      read-write as the non-root user, and refuses to write while a session is
+      playing.
+- [x] ~~**Scheduler examples**~~ `docs/scheduling.md` covers systemd, launchd,
+      Task Scheduler, cron and the container.
+- [ ] **Container image publishing**, and a plan/apply observed end to end
+      inside the container. The image builds and runs (`docker build`, 30.4 MB,
+      distroless, no CGO), but a marker write has not been watched happen in it:
+      planning needs the Plex HTTP API, so the container has to reach a real
+      server, and the guard refuses to write while anything is playing. The
+      SQLite write path itself is covered by the live tests. Worth confirming
+      once on an idle server before the first release.
+- [ ] **A plan file**, so `apply --plan` can write from a plan made earlier and
+      the container can apply without reaching Plex at all. Would also close the
+      gap above.
 - [ ] **Translations** - TheIntroDB/translations scans integration repos for
       locale directories. This one has none yet.

@@ -20,7 +20,7 @@
   <TemplateURL>https://raw.githubusercontent.com/TheIntroDB/plex-integration/main/unraid/theintrodb-plex.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
-  <PostArgs>sync --yes</PostArgs>
+  <PostArgs>schedule --yes</PostArgs>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
@@ -35,7 +35,7 @@
 
   <Config Name="Plex Media Server folder" Target="/plex" Default="" Mode="ro" Description="The Plex application support folder, mounted READ ONLY. Must be the real path, not an Unraid /mnt/user FUSE path: SQLite locking there is unreliable and a write can corrupt the database. For the official Plex container that is /mnt/cache/appdata/plex/Library/Application Support/Plex Media Server, or use the Docker volume path if Plex stores its library on a volume." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server</Config>
 
-  <Config Name="Plex database path" Target="PLEX_DB" Default="/plex/com.plexapp.plugins.library.db" Mode="" Description="The database inside the mounted folder. Only change this if you mounted the application support folder somewhere else." Type="Variable" Display="advanced" Required="false" Mask="false">/plex/com.plexapp.plugins.library.db</Config>
+  <Config Name="Plex database path" Target="PLEX_DB" Default="" Mode="" Description="Leave empty to use the database inside the mounted folder. The database is at Plug-in Support/Databases/com.plexapp.plugins.library.db inside the application support folder, which the tool finds by itself; set this only if you mounted something unusual." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="State folder" Target="/state" Default="" Mode="rw" Description="Ledger, backups of the Plex database, undo journals and fingerprints. Back this up: without the ledger the tool cannot tell its own markers from Plex's." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/tidb-plex</Config>
 
@@ -46,6 +46,8 @@
   <Config Name="Allow writing while Plex runs" Target="TIDB_PLEX_ALLOW_LIVE" Default="false" Mode="" Description="Off by default. When on, a run still refuses to write if anything is playing." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 
   <Config Name="Schedule" Target="TIDB_PLEX_SCHEDULE" Default="30 7 * * *" Mode="" Description="Cron expression for the daily sync. It runs after Plex's own maintenance window so the two are not fighting over the database." Type="Variable" Display="always" Required="false" Mask="false">30 7 * * *</Config>
+
+  <Config Name="Run once on start" Target="TIDB_PLEX_RUN_ON_START" Default="false" Mode="" Description="Run a sync as soon as the container starts, before waiting for the first scheduled run. Off by default, so recreating the container does not by itself write to your library." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 
   <Config Name="Log level" Target="TIDB_PLEX_LOG_LEVEL" Default="info" Mode="" Description="debug, info, warn or error." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
 </Container>

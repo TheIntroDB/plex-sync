@@ -33,9 +33,16 @@ COPY --from=builder /out/tidb-plex /tidb-plex
 VOLUME ["/state"]
 ENV TIDB_PLEX_STATE_DIR=/state
 
-# Primary interface is the terminal: `docker run -it` opens it.
+# When the container runs itself. 07:30 local, after Plex's own maintenance
+# window, so the two are not writing to the same database at the same time.
+ENV TIDB_PLEX_SCHEDULE="30 7 * * *"
+
+# The schedule is held by this process, so the image needs no cron daemon, no
+# shell and no second process. Without --yes a scheduled run reports what is
+# missing and changes nothing; add it, as the Unraid template does, when you
+# want the container to write.
 ENTRYPOINT ["/tidb-plex"]
-CMD ["--help"]
+CMD ["schedule"]
 
 # There is no shell in this image, so the check runs the binary itself.
 HEALTHCHECK --interval=5m --timeout=20s --start-period=10s \
