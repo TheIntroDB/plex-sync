@@ -87,12 +87,7 @@ has the tag.
 
 **If you do not have Plex Pass**, this tool can still put markers in the database
 and Plex will serve them, but no client will offer to skip anything, so there is
-little point running it for that. What people use instead is
-[PlexAutoSkip](https://github.com/mdhiggins/PlexAutoSkip), a Python script that
-watches playback and seeks past a segment itself rather than relying on Plex's own
-skip button. It is a different approach to the same problem and this tool does not
-talk to it — its custom marker files are its own format — but it is the answer for
-a server without a Pass. We have not tested it.
+little point running it for that.
 
 An API key is optional. With one, the daily allowance is higher and your own
 pending submissions are included in what you get back.
