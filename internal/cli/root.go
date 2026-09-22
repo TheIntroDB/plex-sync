@@ -108,6 +108,7 @@ without --yes.`),
 	root.AddCommand(
 		newVersionCmd(),
 		newConfigCmd(g),
+		newSetupCmd(g),
 		newLibraryCmd(g),
 		newPlanCmd(g),
 		newApplyCmd(g),
