@@ -49,6 +49,13 @@ type setting struct {
 	// an existing key is never put back on the screen.
 	start func(*config.Config) string
 
+	// fallback is what the row is in fact using when the setting itself is
+	// empty, said in words. Two settings are resolved on the machine rather
+	// than stored: the database path and the token. Both were showing "(empty)"
+	// and "not set" while the tool was using a value it had found, which reads
+	// as a fault in a screen whose whole job is to say what is going on.
+	fallback func(*config.Config) string
+
 	// state is what a button shows, read from the program rather than from the
 	// configuration, and run is what pressing enter does after confirmation.
 	state func(*Model) string
@@ -72,6 +79,12 @@ func (s setting) display(m *Model) string {
 		return yesNo(value == "true")
 	case settingSecret:
 		if value == "" {
+			// Never the value itself: whether one is in use is the question
+			// this row answers, and a secret on a settings screen is a secret
+			// in a screenshot.
+			if s.fallback != nil {
+				return s.fallback(cfg)
+			}
 			return "not set"
 		}
 		return "set, hidden"
@@ -79,6 +92,9 @@ func (s setting) display(m *Model) string {
 		return value
 	default:
 		if value == "" {
+			if s.fallback != nil {
+				return s.fallback(cfg)
+			}
 			return "(empty)"
 		}
 		return value
@@ -161,12 +177,32 @@ func settingsRows() []setting {
 			help: "Found automatically on this machine when it is empty. Set it for a remote server.",
 			get:  func(c *config.Config) string { return c.Plex.Token },
 			set:  func(c *config.Config, v string) error { c.Plex.Token = strings.TrimSpace(v); return nil },
+			fallback: func(c *config.Config) string {
+				// One is read out of Plex's own files when this is empty, so
+				// "not set" was wrong whenever it was found. The token itself
+				// is never shown; that it is in use is the useful part.
+				if c.Plex.ResolvedToken() != "" {
+					return "found on this machine, hidden"
+				}
+				return "not set"
+			},
 		},
 		{
 			section: "Plex", key: "plex.database", label: "database", kind: settingText,
-			help: "The library database. Empty means find it in Plex's own directories.",
+			help: "The library database. Empty means find it in Plex's own directories, which is what happens by default.",
 			get:  func(c *config.Config) string { return c.Plex.Database },
 			set:  func(c *config.Config, v string) error { c.Plex.Database = strings.TrimSpace(v); return nil },
+			fallback: func(c *config.Config) string {
+				// The path is searched for on this machine, so an empty setting
+				// is not an empty answer: showing "(empty)" here while the tool
+				// writes to a database it found is what made this inconsistent
+				// with `config check` and the status screen, which both print
+				// the path in use.
+				if found := c.Plex.ResolvedDatabase(); found != "" {
+					return "found automatically: " + found
+				}
+				return "not found, and writing needs it"
+			},
 		},
 
 		{

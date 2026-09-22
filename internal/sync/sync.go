@@ -288,7 +288,7 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 		res.Survey.Requests = usage.Requests
 	}
 
-	r.recordRun(started, "plan", res, nil)
+	r.recordRun(started, "preview", res, nil)
 	r.emit(opts, Event{Stage: "survey", Done: len(items), Total: len(items), Message: "planned"})
 	return res, nil
 }
@@ -360,7 +360,8 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 		r.app.Log.Warn("created the marker tag Plex had not made", "tag_id", tagID)
 	}
 
-	stats, err := db.ApplyPlans(work, tagID, cfg.Apply.ChunkSize, journal)
+	stats, err := db.ApplyPlans(work, tagID, cfg.Apply.ChunkSize, journal,
+		plexdb.WithReplacePolicy(cfg.Apply.Policy == preferTheIntroDBPolicy))
 	if closeErr := journal.Close(); err == nil {
 		err = closeErr
 	}

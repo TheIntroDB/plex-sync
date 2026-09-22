@@ -257,6 +257,51 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			return nil
 		})
 
+	case "settings_insert":
+		// A settings row this tool made to hang markers off. Deleting it takes
+		// the markers with it, which is what the foreign key is for.
+		id := rowInt(op, "id")
+		if id == 0 {
+			return fmt.Errorf("plexdb: undo settings_insert without a row id")
+		}
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM metadata_item_settings WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("plexdb: undo settings_insert %d: %w", id, err)
+		}
+		return nil
+
+	case "setting_marker_insert":
+		id := rowInt(op, "id")
+		if id == 0 {
+			return fmt.Errorf("plexdb: undo setting_marker_insert without a row id")
+		}
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM metadata_item_setting_markers WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("plexdb: undo setting_marker_insert %d: %w", id, err)
+		}
+		return nil
+
+	case "setting_marker_delete":
+		row, _ := op["row"].(map[string]any)
+		if row == nil {
+			return fmt.Errorf("plexdb: undo setting_marker_delete without the row it removed")
+		}
+		// Put back every column, including the timestamps: this row may be one
+		// Plex wrote itself, and a marker that looks like it was created now is
+		// a lie about when it was detected.
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO metadata_item_setting_markers
+			    (id, marker_type, metadata_item_setting_id, start_time_offset,
+			     end_time_offset, title, created_at, updated_at, extra_data)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			rowInt(row, "id"), rowInt(row, "marker_type"), rowInt(row, "setting_id"),
+			rowInt(row, "start_ms"), rowInt(row, "end_ms"),
+			rowNullString(row, "title"), rowInt(row, "created_at"), rowInt(row, "updated_at"),
+			rowNullString(row, "extra_data")); err != nil {
+			return fmt.Errorf("plexdb: undo setting_marker_delete: %w", err)
+		}
+		return nil
+
 	case "extra":
 		partID := rowInt(op, "part_id")
 		if partID == 0 {

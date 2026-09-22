@@ -14,6 +14,23 @@ import (
 // kept short enough that a live server never notices it.
 const DefaultChunkSize = 25
 
+// ApplyOption adjusts one apply run.
+type ApplyOption func(*applyConfig)
+
+// applyConfig is what an option can change.
+type applyConfig struct {
+	// replace says the plan means to replace markers Plex detected itself,
+	// which is apply.policy being "prefer-theintrodb". It only matters to the
+	// marker table Plex 1.43 reads: a marker Plex wrote there is a better answer
+	// than guessing, so it is kept unless the plan asked for it to go.
+	replace bool
+}
+
+// WithReplacePolicy sets whether Plex's own markers may be overwritten.
+func WithReplacePolicy(replace bool) ApplyOption {
+	return func(c *applyConfig) { c.replace = replace }
+}
+
 // WriteStats summarises one ApplyPlans run.
 type WriteStats struct {
 	// Items is how many plans were looked at.
@@ -44,7 +61,13 @@ type WriteStats struct {
 // tagID is the marker tag to hang new rows off, used only when a library has no
 // per-text tag. Every operation is written to j before it happens; j may be nil
 // for a dry write with no undo log, which is rarely what you want.
-func (d *DB) ApplyPlans(plans []model.ItemPlan, tagID int64, chunk int, j *Journal) (WriteStats, error) {
+func (d *DB) ApplyPlans(
+	plans []model.ItemPlan, tagID int64, chunk int, j *Journal, opts ...ApplyOption,
+) (WriteStats, error) {
+	var cfg applyConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	var stats WriteStats
 	if len(plans) == 0 {
 		return stats, nil
@@ -59,7 +82,7 @@ func (d *DB) ApplyPlans(plans []model.ItemPlan, tagID int64, chunk int, j *Journ
 		if end > len(plans) {
 			end = len(plans)
 		}
-		if err := d.applyChunk(ctx, plans[start:end], tagID, j, &stats); err != nil {
+		if err := d.applyChunk(ctx, plans[start:end], tagID, j, &stats, cfg.replace); err != nil {
 			return stats, err
 		}
 	}
@@ -71,7 +94,7 @@ func (d *DB) ApplyPlans(plans []model.ItemPlan, tagID int64, chunk int, j *Journ
 // undo entry naming a row that was never written is harmless, a half-written
 // chunk is not. Statistics are only added to the caller's totals once the chunk
 // has committed, so a rolled-back chunk is never reported as written.
-func (d *DB) applyChunk(ctx context.Context, batch []model.ItemPlan, tagID int64, j *Journal, stats *WriteStats) error {
+func (d *DB) applyChunk(ctx context.Context, batch []model.ItemPlan, tagID int64, j *Journal, stats *WriteStats, replace bool) error {
 	tx, err := d.db.BeginTx(ctx, nil) // _txlock=immediate, so BEGIN IMMEDIATE
 	if err != nil {
 		return fmt.Errorf("plexdb: begin: %w", err)
@@ -85,7 +108,7 @@ func (d *DB) applyChunk(ctx context.Context, batch []model.ItemPlan, tagID int64
 
 	var chunk WriteStats
 	for i := range batch {
-		if err := d.applyOne(ctx, tx, batch[i], tagID, j, &chunk); err != nil {
+		if err := d.applyOne(ctx, tx, batch[i], tagID, j, &chunk, replace); err != nil {
 			return err
 		}
 	}
@@ -111,15 +134,28 @@ func mergeStats(dst *WriteStats, src WriteStats) {
 }
 
 // applyOne applies a single item plan inside an open transaction.
-func (d *DB) applyOne(ctx context.Context, tx querier, plan model.ItemPlan, tagID int64, j *Journal, stats *WriteStats) error {
+func (d *DB) applyOne(
+	ctx context.Context, tx querier, plan model.ItemPlan, tagID int64,
+	j *Journal, stats *WriteStats, replace bool,
+) error {
 	stats.Items++
-	if !plan.Changes() {
-		return nil
-	}
 
 	ratingKey := int64(plan.Item.RatingKey)
 	if ratingKey <= 0 {
 		return fmt.Errorf("plexdb: plan for %q has no rating key", plan.Item.Label())
+	}
+
+	if !plan.Changes() {
+		// Nothing to do in taggings, and something may still be owed to Plex's
+		// own marker table: a library written by an earlier version of this tool
+		// has its markers in taggings only, which Plex 1.43 ignores completely.
+		// Syncing here is what turns those rows into working skip buttons
+		// without re-writing anything a second time, which matters because the
+		// alternative is telling every existing install to undo and start over.
+		if _, err := d.writeSettingMarkers(ctx, tx, ratingKey, desiredMarkers(plan), replace, j); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	live, err := readMarkers(ctx, tx, ratingKey, 0)
@@ -248,6 +284,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)`,
 			}
 			stats.PartsUpdated++
 		}
+	}
+
+	// Plex 1.43 does not read markers out of taggings; it has a table of its own
+	// and that is what its API serves. The same markers go there too, when this
+	// Plex has that table. A server older than it reads taggings and nothing
+	// here runs, which is what keeps one writer working for both.
+	if _, err := d.writeSettingMarkers(ctx, tx, ratingKey, desiredMarkers(plan),
+		replace, j); err != nil {
+		return err
 	}
 
 	stats.Written++

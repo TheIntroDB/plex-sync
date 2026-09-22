@@ -9,6 +9,10 @@ import (
 	"github.com/TheIntroDB/plex-sync/internal/plexdb"
 )
 
+// preferTheIntroDBPolicy is the configuration value that lets TheIntroDB replace
+// what Plex detected for a segment type it answered.
+const preferTheIntroDBPolicy = "prefer-theintrodb"
+
 // EnsureMarkerTag makes the marker tag in the Plex database when the library has
 // never held a marker, and reports the tag to use.
 //

@@ -589,6 +589,20 @@ func (l *Ledger) RecordRun(run Run) (int64, error) {
 
 // Runs returns the most recent runs, newest first. A limit of zero or less
 // defaults to ten.
+// formerNames maps what a run was recorded as before the command was renamed, so
+// that a ledger written by an older version reads the same as one written now.
+// The note is shown by `status` and on the status screen, and a history that says
+// "plan" for the runs after it says "preview" would be a puzzle.
+var formerNames = map[string]string{"plan": "preview"}
+
+// runName is the name to show for a run.
+func runName(note string) string {
+	if renamed, ok := formerNames[note]; ok {
+		return renamed
+	}
+	return note
+}
+
 func (l *Ledger) Runs(limit int) ([]Run, error) {
 	if limit <= 0 {
 		limit = 10
@@ -619,6 +633,7 @@ func (l *Ledger) Runs(limit int) ([]Run, error) {
 		); err != nil {
 			return nil, fmt.Errorf("ledger: scan run: %w", err)
 		}
+		r.Note = runName(r.Note)
 		r.StartedAt = time.Unix(startedAt, 0)
 		r.FinishedAt = time.Unix(finishedAt, 0)
 		out = append(out, r)
