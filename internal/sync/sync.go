@@ -39,8 +39,6 @@ type Options struct {
 	DryRun bool
 	// Confirm is the --yes flag. A write without it is refused.
 	Confirm bool
-	// Live allows a write while Plex is running, if nothing is streaming.
-	Live bool
 	// PlexStopped asserts that Plex is stopped, for when the tool cannot tell.
 	PlexStopped bool
 	// SkipSessionCheck allows a live write without checking for playback.
@@ -614,7 +612,7 @@ func (r *Runner) Preflight(ctx context.Context, opts Options) error {
 	if !running {
 		return nil
 	}
-	if !cfg.Apply.AllowLive && !opts.Live {
+	if !cfg.Apply.AllowLive {
 		return ErrPlexRunning
 	}
 	sessions, err := r.app.Plex.ActiveSessions(ctx)

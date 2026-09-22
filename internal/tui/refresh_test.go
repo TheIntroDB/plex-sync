@@ -10,7 +10,7 @@ import (
 	"github.com/TheIntroDB/plex-sync/internal/sync"
 )
 
-// A refresh is two loads, and the stage must survive both of them.
+// A refresh is three loads, and the stage must survive all of them.
 //
 // It used to clear on whichever arrived first, and readiness never cleared it at
 // all, so pressing r left the header saying "refreshing" for the rest of the
@@ -26,26 +26,32 @@ func TestRefreshClearsOnlyAfterBothLoads(t *testing.T) {
 		t.Error("the header does not say it is refreshing")
 	}
 
-	// The first of the two comes back: still refreshing.
+	// The first of the three comes back: still refreshing.
 	m.Update(readinessMsg{readiness: app.Readiness{PlexOK: true, TIDBOK: true}})
 	if m.busy != "refreshing" {
-		t.Errorf("busy = %q after one of the two loads, want it to still be refreshing", m.busy)
+		t.Errorf("busy = %q after one of the three loads, want it to still be refreshing", m.busy)
 	}
 
-	// The second: done.
+	// The second.
 	m.Update(statsMsg{stats: &ledger.Stats{}})
+	if m.busy != "refreshing" {
+		t.Errorf("busy = %q after two of three, want still refreshing", m.busy)
+	}
+
+	// The third: done.
+	m.Update(schedulerMsg{running: false})
 	if m.busy != "" {
-		t.Errorf("busy = %q after both loads, want it cleared", m.busy)
+		t.Errorf("busy = %q after all three loads, want it cleared", m.busy)
 	}
 	if strings.Contains(m.View(), "refreshing") {
-		t.Error("the header still says refreshing after both loads came back")
+		t.Error("the header still says refreshing after all three loads came back")
 	}
 	if m.status != "refreshed" {
 		t.Errorf("status = %q, want refreshed", m.status)
 	}
 }
 
-// The order the two arrive in must not matter.
+// The order the three arrive in must not matter.
 func TestRefreshClearsInEitherOrder(t *testing.T) {
 	m := newTestModel(t)
 	press(m, "r")
@@ -55,6 +61,10 @@ func TestRefreshClearsInEitherOrder(t *testing.T) {
 		t.Errorf("busy = %q after the ledger only, want refreshing", m.busy)
 	}
 	m.Update(readinessMsg{readiness: app.Readiness{PlexOK: true, TIDBOK: true}})
+	if m.busy != "refreshing" {
+		t.Errorf("busy = %q after ledger+readiness, want still refreshing", m.busy)
+	}
+	m.Update(schedulerMsg{running: false})
 	if m.busy != "" {
 		t.Errorf("busy = %q, want cleared", m.busy)
 	}
@@ -97,6 +107,7 @@ func TestAFailedRefreshStillEndsTheStage(t *testing.T) {
 		PlexOK:    false,
 		PlexError: "connection refused",
 	}})
+	m.Update(schedulerMsg{running: false})
 
 	if m.busy != "" {
 		t.Errorf("busy = %q, want cleared after a failed check", m.busy)
@@ -176,6 +187,7 @@ func TestReadyOnlyOnTheWayIn(t *testing.T) {
 	press(m, "r")
 	m.Update(readinessMsg{readiness: app.Readiness{PlexOK: true, TIDBOK: true}})
 	m.Update(statsMsg{stats: &ledger.Stats{}})
+	m.Update(schedulerMsg{running: false})
 	if m.status != "refreshed" {
 		t.Errorf("status = %q after a refresh, want refreshed", m.status)
 	}

@@ -227,12 +227,19 @@ plex-sync setup            # one-time: says what it found, and prints the schedu
 plex-sync sync --yes       # fetch what TheIntroDB has and write it into Plex
 ```
 
+Or, to run once and keep it running daily:
+
+```bash
+plex-sync start            # run once now, then daily on the configured schedule
+plex-sync stop             # signal the scheduler to stop
+```
+
 `setup` reports what it found and prints the crontab line to keep running
 afterwards. It writes nothing unless you ask it to. It writes
 nothing without the same backup and undo journal as any other run, and
 `--dry-run` reports without writing anything at all.
 
-If Plex is running, add `--live` to write while it does, as long as nothing is
+If Plex is running, set `apply.allow_live = true` in the configuration (or toggle it in the settings screen) to write while it does, as long as nothing is
 being streamed. Every write is reversible:
 
 ```bash

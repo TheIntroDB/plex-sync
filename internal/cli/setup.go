@@ -158,7 +158,6 @@ It also prints the schedule to use afterwards. Nothing else is written. Use
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, "next")
 			fmt.Fprintln(out, "  write once now    plex-sync sync --yes")
-			fmt.Fprintln(out, "                    (with Plex stopped, or --live while it runs)")
 			fmt.Fprintln(out, "  see first         plex-sync preview --limit 20")
 			if hasTerminal(cmd) {
 				fmt.Fprintln(out, "  or the interface  plex-sync tui")
@@ -171,7 +170,6 @@ It also prints the schedule to use afterwards. Nothing else is written. Use
 	// The one thing here that touches Plex's schema: a debug and migration flag rather than a step to walk through.
 	cmd.Flags().BoolVar(&opts.ForceCreateInitialTag, "force-create-initial-tag", false,
 		"make the marker tag a library with no markers needs, so marker rows have somewhere to go (debug)")
-	cmd.Flags().BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
 	cmd.Flags().BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	cmd.Flags().BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")
 	return cmd

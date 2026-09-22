@@ -177,7 +177,6 @@ type applyInput struct {
 		Confirm bool   `json:"confirm" doc:"must be true to write to the Plex database"`
 		Filter  string `json:"filter,omitempty"`
 		Limit   int    `json:"limit,omitempty"`
-		Live    bool   `json:"live,omitempty" doc:"allow writing while Plex runs and nothing is playing"`
 	}
 }
 
@@ -328,7 +327,7 @@ func (s *Server) register() {
 		Path:        "/apply",
 		Summary:     "Plan and write markers into the Plex database",
 		Description: "Writes only when confirm is true. It fails closed when Plex is running " +
-			"without live, when something is streaming, or when the database path cannot be " +
+			"without allow_live, when something is streaming, or when the database path cannot be " +
 			"trusted.",
 		Tags: []string{"run"},
 	}, func(ctx context.Context, in *applyInput) (*applyOutput, error) {
@@ -340,7 +339,6 @@ func (s *Server) register() {
 			Confirm: true,
 			Filter:  in.Body.Filter,
 			Limit:   in.Body.Limit,
-			Live:    in.Body.Live,
 		}
 		res, err := s.runner.Run(ctx, opts)
 		if err != nil {

@@ -54,6 +54,16 @@ func (m *Model) activateSetting() (tea.Model, tea.Cmd) {
 		}
 		return m, m.saveSetting(row, fmt.Sprintf("%s %s", row.label, next))
 
+	case settingAction:
+		if row.action != nil {
+			cmd := row.action(m)
+			if cmd == nil {
+				return m, nil
+			}
+			return m, cmd
+		}
+		return m, nil
+
 	default:
 		// Free text, a number or a secret: open the input line.
 		m.editing = true

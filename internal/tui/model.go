@@ -81,6 +81,9 @@ type Model struct {
 	items     []model.LibraryItem
 	result    *sync.Result
 
+	// schedulerRunning is true when the scheduler PID file points at a live process.
+	schedulerRunning bool
+
 	// Confirmation state for the actions that touch the database.
 	confirmApply bool
 	confirmUndo  bool
@@ -132,6 +135,8 @@ type statsMsg struct {
 	usage tidb.Usage
 }
 
+type schedulerMsg struct{ running bool }
+
 type inventoryMsg struct {
 	items []model.LibraryItem
 	err   error
@@ -157,7 +162,7 @@ type progressMsg struct{ event sync.Event }
 type statusMsg struct{ text string }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.loadStatus(), m.loadReadiness())
+	return tea.Batch(m.loadStatus(), m.loadReadiness(), m.checkScheduler())
 }
 
 // --- commands --------------------------------------------------------------
@@ -180,6 +185,14 @@ func (m *Model) loadStatus() tea.Cmd {
 			out.runs = runs
 		}
 		return out
+	}
+}
+
+// checkScheduler reads the PID file and reports whether the scheduler is alive.
+func (m *Model) checkScheduler() tea.Cmd {
+	return func() tea.Msg {
+		running, _ := schedulerRunning(m.app.Cfg.StateDir)
+		return schedulerMsg{running: running}
 	}
 }
 
@@ -283,6 +296,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stats = msg.stats
 		m.runs = msg.runs
 		m.usage = msg.usage
+		m.finishLoad()
+		return m, nil
+
+	case schedulerMsg:
+		m.schedulerRunning = msg.running
 		m.finishLoad()
 		return m, nil
 
@@ -458,10 +476,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.listOffset = 0
 		return m, nil
 	case "r":
-		// Two loads: the ledger and the services. Both have to come back
-		// before the stage is over.
-		m.startLoad("refreshing", 2)
-		return m, tea.Batch(m.loadStatus(), m.loadReadiness())
+		// Three loads: the ledger, the services and the scheduler status.
+		m.startLoad("refreshing", 3)
+		return m, tea.Batch(m.loadStatus(), m.loadReadiness(), m.checkScheduler())
 	case "l":
 		m.startLoad("reading the library", 1)
 		m.screen = screenLibrary

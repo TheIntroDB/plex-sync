@@ -28,7 +28,6 @@ func newScheduleCmd(g *globals) *cobra.Command {
 		once         bool
 		yes          bool
 		dryRun       bool
-		live         bool
 		plexStopped  bool
 		skipSessions bool
 	)
@@ -51,7 +50,6 @@ writes with --yes.
 
     plex-sync schedule                 report what is missing, once a day
     plex-sync schedule --yes            write it, once a day
-    plex-sync schedule --yes --live     write even while Plex is streaming
     plex-sync schedule --once --yes     a single run, for systemd or launchd
     plex-sync schedule --print-next     the next five run times, then exit`,
 		Args: cobra.NoArgs,
@@ -111,7 +109,6 @@ writes with --yes.
 			options := sync.Options{
 				Confirm:          yes,
 				DryRun:           dryRun,
-				Live:             live,
 				PlexStopped:      plexStopped,
 				SkipSessionCheck: skipSessions,
 			}
@@ -190,7 +187,6 @@ writes with --yes.
 	cmd.Flags().BoolVar(&once, "once", false, "run a single time and exit, for a systemd or launchd timer")
 	cmd.Flags().BoolVar(&yes, "yes", false, "write the markers that are missing")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would change without writing")
-	cmd.Flags().BoolVar(&live, "live", false, "allow writing while Plex is running")
 	cmd.Flags().BoolVar(&plexStopped, "plex-stopped", false, "confirm Plex is stopped")
 	cmd.Flags().BoolVar(&skipSessions, "skip-session-check", false, "do not ask Plex whether anything is being watched")
 

@@ -31,7 +31,6 @@ func addRunFlags(cmd *cobra.Command, opts *sync.Options) {
 	flags.IntVar(&opts.Limit, "limit", 0, "examine at most this many items")
 	flags.BoolVar(&opts.DryRun, "dry-run", false, "report what would happen without writing")
 	flags.BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
-	flags.BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
 	flags.BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")
 	flags.BoolVar(&opts.NoBackup, "no-backup", false, "skip the pre-write database backup")
 	// Deliberately verbose and deliberately here rather than in the settings:
@@ -202,7 +201,7 @@ Plans and then writes. Requires --yes: without it the plan is printed and
 nothing is written.
 
 Before writing, the tool must confirm whether Plex is running. If Plex is up it
-refuses unless --live is given, and then refuses again if anything is playing.
+refuses unless allow_live is set, and then refuses again if anything is playing.
 The database is backed up first, and every change is journalled so it can be
 reverted with ` + "`plex-sync undo`" + `.
 
@@ -288,7 +287,7 @@ func newSyncCmd(g *globals) *cobra.Command {
 		Long: strings.TrimSpace(`
 The command to put in cron. It plans and, with --yes, applies in the same run.
 
-Because it can be scheduled, it fails closed: if Plex is running without --live,
+Because it can be scheduled, it fails closed: if Plex is running without allow_live,
 if a playback session is active, or if the database path cannot be trusted, it
 writes nothing and exits non-zero rather than doing something surprising.`),
 		Args: cobra.NoArgs,
@@ -339,7 +338,7 @@ writes nothing and exits non-zero rather than doing something surprising.`),
 // --- undo ------------------------------------------------------------------
 
 func newUndoCmd(g *globals) *cobra.Command {
-	var yes, dryRun, live, plexStopped, skipSessionCheck bool
+	var yes, dryRun, plexStopped, skipSessionCheck bool
 	cmd := &cobra.Command{
 		Use:   "undo <journal>",
 		Short: "Revert the changes recorded in an undo journal",
@@ -370,7 +369,6 @@ explicitly and knowingly.`),
 			count, err := runner.Undo(cmd.Context(), path, sync.Options{
 				Confirm:          yes,
 				DryRun:           dryRun,
-				Live:             live,
 				PlexStopped:      plexStopped,
 				SkipSessionCheck: skipSessionCheck,
 			})
@@ -391,7 +389,6 @@ explicitly and knowingly.`),
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm the revert")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be reverted")
-	cmd.Flags().BoolVar(&live, "live", false, "allow reverting while Plex runs and nothing is playing")
 	cmd.Flags().BoolVar(&plexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	cmd.Flags().BoolVar(&skipSessionCheck, "skip-session-check", false, "skip the active session check")
 	return cmd

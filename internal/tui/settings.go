@@ -2,8 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/TheIntroDB/plex-sync/internal/config"
 	"github.com/TheIntroDB/plex-sync/internal/schedule"
@@ -23,6 +28,8 @@ const (
 	settingInt
 	// settingChoice cycles through a fixed set with enter.
 	settingChoice
+	// settingAction runs a callback when enter is pressed.
+	settingAction
 )
 
 // setting is one editable row on the Settings screen.
@@ -49,10 +56,17 @@ type setting struct {
 	// and "not set" while the tool was using a value it had found, which reads
 	// as a fault in a screen whose whole job is to say what is going on.
 	fallback func(*config.Config) string
+
+	// action is the callback for settingAction rows. It returns a command
+	// for the Bubble Tea event loop.
+	action func(*Model) tea.Cmd
 }
 
 // display renders a row's value, masking anything secret.
 func (s setting) display(m *Model) string {
+	if s.kind == settingAction {
+		return "press enter"
+	}
 	cfg := m.app.Cfg
 	value := s.get(cfg)
 	switch s.kind {
@@ -288,6 +302,67 @@ func settingsRows() []setting {
 			set:  boolSet(func(c *config.Config, on bool) { c.Schedule.RunOnStart = on }),
 		},
 
+		// The status row is a read-only display of whether the scheduler is running.
+		{
+			section: "Schedule", key: "schedule.status", label: "cron status", kind: settingText,
+			help: "Whether the scheduler process is active.",
+			get: func(c *config.Config) string {
+				running, _ := schedulerRunning(c.StateDir)
+				if running {
+					return "running"
+				}
+				return "stopped"
+			},
+			set: func(c *config.Config, v string) error { return nil },
+		},
+		{
+			section: "Schedule", key: "schedule.start", label: "start cron", kind: settingAction,
+			help: "Launch the scheduler as a background process.",
+			get: func(c *config.Config) string { return "" },
+			set: func(c *config.Config, v string) error { return nil },
+			action: func(m *Model) tea.Cmd {
+				running, _ := schedulerRunning(m.app.Cfg.StateDir)
+				if running {
+					m.setError(fmt.Errorf("scheduler is already running"))
+					return nil
+				}
+				cmd := exec.Command("plex-sync", "start")
+				if err := cmd.Start(); err != nil {
+					m.setError(fmt.Errorf("start scheduler: %w", err))
+					return nil
+				}
+				m.schedulerRunning = true
+				m.setStatus("scheduler started")
+				return nil
+			},
+		},
+		{
+			section: "Schedule", key: "schedule.stop", label: "stop cron", kind: settingAction,
+			help: "Signal the running scheduler to stop.",
+			get: func(c *config.Config) string { return "" },
+			set: func(c *config.Config, v string) error { return nil },
+			action: func(m *Model) tea.Cmd {
+				running, pid := schedulerRunning(m.app.Cfg.StateDir)
+				if !running {
+					m.setError(fmt.Errorf("scheduler is not running"))
+					return nil
+				}
+				proc, err := os.FindProcess(pid)
+				if err != nil {
+					m.setError(fmt.Errorf("could not find scheduler process: %w", err))
+					return nil
+				}
+				if err := proc.Signal(syscall.SIGTERM); err != nil {
+					m.setError(fmt.Errorf("stop scheduler: %w", err))
+					return nil
+				}
+				_ = os.Remove(schedulerPIDFile(m.app.Cfg.StateDir))
+				m.schedulerRunning = false
+				m.setStatus("scheduler stopped")
+				return nil
+			},
+		},
+
 		{
 			section: "Logging", key: "log_level", label: "log level", kind: settingChoice,
 			choices: []string{"debug", "info", "warn", "error"},
@@ -347,4 +422,30 @@ func nextChoice(row setting, current string) string {
 		}
 	}
 	return row.choices[0]
+}
+
+// schedulerPIDFile returns the path to the scheduler PID file.
+func schedulerPIDFile(stateDir string) string {
+	return stateDir + "/scheduler.pid"
+}
+
+// schedulerRunning checks whether the scheduler process is alive by reading the
+// PID file and sending signal 0.
+func schedulerRunning(stateDir string) (bool, int) {
+	raw, err := os.ReadFile(schedulerPIDFile(stateDir))
+	if err != nil {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 0 {
+		return false, 0
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false, 0
+	}
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return false, 0
+	}
+	return true, pid
 }

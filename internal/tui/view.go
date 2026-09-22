@@ -145,6 +145,14 @@ func (m *Model) statusScreen() string {
 		b.WriteString("  last run      " + styleDim.Render("never") + "\n")
 	}
 
+	b.WriteString("\n" + styleTitle.Render("Scheduler") + "\n")
+	if m.schedulerRunning {
+		b.WriteString("  " + styleGood.Render("running") + "\n")
+	} else {
+		b.WriteString("  " + styleDim.Render("stopped") + "\n")
+	}
+	b.WriteString(fmt.Sprintf("  schedule      %s\n", cfg.Schedule.Cron))
+
 	b.WriteString("\n" + styleTitle.Render("Sources") + "\n")
 	for _, name := range cfg.Sources.Ordered() {
 		state := "off"
