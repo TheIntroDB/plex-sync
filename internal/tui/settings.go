@@ -318,8 +318,8 @@ func settingsRows() []setting {
 		{
 			section: "Schedule", key: "schedule.start", label: "start cron", kind: settingAction,
 			help: "Launch the scheduler as a background process.",
-			get: func(c *config.Config) string { return "" },
-			set: func(c *config.Config, v string) error { return nil },
+			get:  func(c *config.Config) string { return "" },
+			set:  func(c *config.Config, v string) error { return nil },
 			action: func(m *Model) tea.Cmd {
 				running, _ := schedulerRunning(m.app.Cfg.StateDir)
 				if running {
@@ -339,8 +339,8 @@ func settingsRows() []setting {
 		{
 			section: "Schedule", key: "schedule.stop", label: "stop cron", kind: settingAction,
 			help: "Signal the running scheduler to stop.",
-			get: func(c *config.Config) string { return "" },
-			set: func(c *config.Config, v string) error { return nil },
+			get:  func(c *config.Config) string { return "" },
+			set:  func(c *config.Config, v string) error { return nil },
 			action: func(m *Model) tea.Cmd {
 				running, pid := schedulerRunning(m.app.Cfg.StateDir)
 				if !running {
