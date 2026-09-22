@@ -436,6 +436,9 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 		plexdb.WithReplacePolicy(cfg.Apply.Policy == preferTheIntroDBPolicy))
 	if closeErr := journal.Close(); err == nil {
 		err = closeErr
+	} else if closeErr != nil {
+		r.app.Log.Warn("could not close the undo journal; the write already failed",
+			"error", closeErr, "journal", journalPath)
 	}
 	res.Stats = stats
 	if err != nil {
@@ -566,7 +569,10 @@ func (r *Runner) Undo(ctx context.Context, journalPath string, opts Options) (in
 	// Forget these items entirely, so the next plan does not mistake the
 	// restored state for a wipe and re-apply immediately.
 	ops, err := plexdb.ReadJournal(journalPath)
-	if err == nil {
+	if err != nil {
+		r.app.Log.Warn("could not read the journal to update the ledger; the undo itself succeeded",
+			"error", err, "journal", journalPath)
+	} else {
 		touched := map[int64]bool{}
 		for _, op := range ops {
 			if key, ok := op["rating_key"].(float64); ok {

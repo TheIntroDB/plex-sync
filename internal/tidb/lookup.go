@@ -149,7 +149,6 @@ func (c *Client) Lookup(ctx context.Context, item model.LibraryItem) (model.Segm
 		}
 		c.store(key, 200, string(resp.Body), item)
 		c.note(Data)
-		result.Reason = ReasonMiss
 		return set, result, nil
 
 	case 404:

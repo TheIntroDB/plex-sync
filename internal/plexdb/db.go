@@ -529,7 +529,6 @@ FROM taggings WHERE id = ?`, id).
 		"metadata_item_id": cmid.Int64,
 		"tag_id":           ctag.Int64,
 		"index":            cidx.Int64,
-		"text":             text.String,
 		"time_offset":      start.Int64,
 		"end_time_offset":  end.Int64,
 		"created_at":       created.Int64,

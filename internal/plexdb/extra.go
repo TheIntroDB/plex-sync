@@ -295,7 +295,7 @@ func jsonEncode(v any) ([]byte, error) {
 // row stops looking like anything Plex ever wrote.
 func stringifyNested(v any) bool {
 	switch t := v.(type) {
-	case map[string]any, []any, map[string]string, []string:
+	case map[string]any, []any:
 		return true
 	case json.RawMessage:
 		trimmed := bytes.TrimSpace(t)
