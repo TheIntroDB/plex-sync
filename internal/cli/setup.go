@@ -3,15 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/TheIntroDB/plex-sync/internal/app"
-	"github.com/TheIntroDB/plex-sync/internal/config"
-	"github.com/TheIntroDB/plex-sync/internal/plexdb"
 	"github.com/TheIntroDB/plex-sync/internal/schedule"
 	"github.com/TheIntroDB/plex-sync/internal/sync"
 )
@@ -33,7 +30,6 @@ import (
 func newSetupCmd(g *globals) *cobra.Command {
 	opts := sync.Options{}
 	var dryRun bool
-	var keepBackups int
 
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -122,7 +118,7 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 				case dryRun:
 					fmt.Fprintln(out, "                    --dry-run, so it was not created")
 				default:
-					if err := createMarkerTagForSetup(cmd, application, opts, keepBackups); err != nil {
+					if err := createMarkerTagForSetup(cmd, application, opts); err != nil {
 						fmt.Fprintf(out, "                    FAILED: %v\n", err)
 						return &silentError{code: ExitError}
 					}
@@ -159,7 +155,7 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 			fmt.Fprintln(out, "next")
 			fmt.Fprintln(out, "  write once now    plex-sync sync --yes")
 			fmt.Fprintln(out, "                    (with Plex stopped, or --live while it runs)")
-			fmt.Fprintln(out, "  see first         plex-sync plan --limit 20")
+			fmt.Fprintln(out, "  see first         plex-sync preview --limit 20")
 			if hasTerminal(cmd) {
 				fmt.Fprintln(out, "  or the interface  plex-sync tui")
 			}
@@ -171,61 +167,28 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 	cmd.Flags().BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
 	cmd.Flags().BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	cmd.Flags().BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")
-	cmd.Flags().IntVar(&keepBackups, "keep-backups", 0, "how many backups to keep (0 uses the configuration)")
 	return cmd
 }
 
-// createMarkerTagForSetup makes the marker tag, through the same gates a write
-// run uses: the confirmation, the preflight check that Plex is not running
-// unannounced, a backup, and a journal entry that undo understands.
-//
-// It is deliberately not a shortcut that writes the row directly. A one-time
-// setup step is exactly the kind of thing that ends up being the only code path
-// nobody tested, and this one touches the Plex schema.
-func createMarkerTagForSetup(cmd *cobra.Command, application *app.App, opts sync.Options, keepBackups int) error {
-	ctx := cmd.Context()
-	cfg := application.Cfg
-
+// createMarkerTagForSetup makes the marker tag through the runner, so the setup
+// command and the interface cannot drift apart in what they check. The gates --
+// confirmation, preflight, backup, journal -- are the runner's, not this
+// function's.
+func createMarkerTagForSetup(cmd *cobra.Command, application *app.App, opts sync.Options) error {
 	opts.Confirm = true
 	runner := sync.New(application)
-	if err := runner.Preflight(ctx, opts); err != nil {
-		return err
-	}
 
-	if cfg.Apply.Backup {
-		if _, err := plexdb.Backup(application.PlexDBPath(), cfg.BackupDir(), backupsToKeep(cfg, keepBackups)); err != nil {
-			return fmt.Errorf("back up the Plex database before writing: %w", err)
-		}
-	}
-
-	if err := os.MkdirAll(cfg.UndoDir(), 0o755); err != nil {
-		return err
-	}
-	journalPath := filepath.Join(cfg.UndoDir(),
-		"undo-"+time.Now().UTC().Format("20060102T150405Z")+".jsonl")
-	journal, err := plexdb.NewJournal(journalPath)
+	id, journalPath, err := runner.EnsureMarkerTag(cmd.Context(), opts)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = journal.Close() }()
-
-	db, err := application.PlexDB(false)
-	if err != nil {
-		return err
+	if journalPath == "" {
+		fmt.Fprintf(stdout(cmd), "                    already present as tag %d\n", id)
+		return nil
 	}
-	if _, err := db.MarkerTagIDOrCreate(ctx, journal); err != nil {
-		return err
-	}
+	fmt.Fprintf(stdout(cmd), "                    created as tag %d\n", id)
 	fmt.Fprintf(stdout(cmd), "                    undo journal %s\n", journalPath)
 	return nil
-}
-
-// backupsToKeep applies the override when one was given on the command line.
-func backupsToKeep(cfg *config.Config, override int) int {
-	if override > 0 {
-		return override
-	}
-	return cfg.Apply.KeepBackups
 }
 
 // selfPath is the command to name in a crontab, which is this executable when it

@@ -25,7 +25,7 @@ same thing when it is run from a terminal.`,
 		},
 	}
 	cmd.Flags().StringVar(&filter, "show", "", "only items whose title contains this text")
-	cmd.Flags().IntVar(&limit, "limit", 0, "plan at most this many items")
+	cmd.Flags().IntVar(&limit, "limit", 0, "examine at most this many items")
 	return cmd
 }
 

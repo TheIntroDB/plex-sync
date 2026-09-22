@@ -32,7 +32,7 @@ const (
 	screenCount
 )
 
-var screenNames = []string{"Status", "Library", "Plan", "Runs", "Settings"}
+var screenNames = []string{"Status", "Library", "Preview", "Runs", "Settings"}
 
 // Options configures the interface.
 type Options struct {
@@ -460,6 +460,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setStatus("reading the library...")
 		return m, m.loadInventory()
 	case "p":
+		// The screen switches now, not when the run finishes. Building the
+		// change set makes one lookup per item, which on a large library is
+		// minutes, and until this moved the only feedback was a line of status
+		// text -- reported as "pressing P to plan ain't shit happening".
+		m.screen = screenPlan
 		m.startLoad("planning", 1)
 		m.setStatus("planning: this makes one lookup per item, so it can take a while")
 		return m, m.runPlan()

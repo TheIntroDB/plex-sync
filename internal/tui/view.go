@@ -216,7 +216,7 @@ func (m *Model) planScreen() string {
 	work := res.Plan.Work()
 
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("Plan") + "\n")
+	b.WriteString(styleTitle.Render("Preview") + "\n")
 	b.WriteString(fmt.Sprintf("  examined %d item(s): %d with data, %d without, %d cached, %d lookup(s)\n",
 		res.Survey.Items, res.Survey.WithData, res.Survey.NoData, res.Survey.Cached, res.Survey.Lookups))
 	b.WriteString(fmt.Sprintf("  policy %s, %d item(s) to change\n\n",

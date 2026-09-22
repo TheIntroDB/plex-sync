@@ -28,7 +28,7 @@ func addRunFlags(cmd *cobra.Command, opts *sync.Options) {
 	flags := cmd.Flags()
 	flags.IntSliceVar(&opts.Sections, "section", nil, "limit to these Plex library section keys")
 	flags.StringVar(&opts.Filter, "show", "", "only items whose title contains this text")
-	flags.IntVar(&opts.Limit, "limit", 0, "plan at most this many items")
+	flags.IntVar(&opts.Limit, "limit", 0, "examine at most this many items")
 	flags.BoolVar(&opts.DryRun, "dry-run", false, "report what would happen without writing")
 	flags.BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	flags.BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
@@ -106,22 +106,32 @@ item never gets markers.`),
 	return cmd
 }
 
-// --- plan ------------------------------------------------------------------
+// --- preview ---------------------------------------------------------------
 
-func newPlanCmd(g *globals) *cobra.Command {
+// newPreviewCmd shows what a run would change. It used to be called "plan",
+// which turned out to read as a step you had to pass rather than a look at what
+// would happen: the first outside user to try this asked "why add plan bloat,
+// it's already scanning the library successfully at that point, just process the
+// entries that haven't already been run and add them to db". Nothing here has to
+// be run before sync; sync does all of it.
+func newPreviewCmd(g *globals) *cobra.Command {
 	opts := sync.Options{}
 	var show int
 	var savePath string
 	cmd := &cobra.Command{
-		Use:   "plan",
-		Short: "Show what a run would change, without changing anything",
+		Use:     "preview",
+		Aliases: []string{"plan"},
+		Short:   "Show what a run would change, without changing anything",
 		Long: strings.TrimSpace(`
 Builds the change set and prints it. Nothing is written and no database lock is
-taken. Every lookup it makes is recorded and cached, so a plan followed by a
-sync does not pay for its requests twice.
+taken. Every lookup it makes is recorded and cached, so a run afterwards does not
+pay for its requests twice.
 
-With --save, the plan is also written to a file, which ` + "`apply --plan`" + ` can
-write later without contacting Plex. That is how a container applies a plan made
+This is optional. ` + "`sync`" + ` previews and writes in one go, which is what you
+want for a scheduled run; use this when you want to see the answer first.
+
+With --save, the preview is also written to a file, which ` + "`apply --preview`" + ` can
+write later without contacting Plex. That is how a container applies a preview made
 on the host, where the library is reachable. The file records what made it and
 against which database, and applying it checks both.`),
 		Args: cobra.NoArgs,
@@ -154,7 +164,7 @@ against which database, and applying it checks both.`),
 					fmt.Fprintf(stdout(cmd), "Saved %d item(s) to %s\n",
 						len(res.Plan.Work()), savePath)
 					fmt.Fprintf(stdout(cmd),
-						"Write it later with: plex-sync apply --plan %s --yes\n", savePath)
+						"Write it later with: plex-sync apply --preview %s --yes\n", savePath)
 				}
 			}
 
@@ -169,7 +179,7 @@ against which database, and applying it checks both.`),
 	}
 	addRunFlags(cmd, &opts)
 	cmd.Flags().IntVar(&show, "show-items", 25, "how many items to print")
-	cmd.Flags().StringVar(&savePath, "save", "", "also write the plan to this file, for `apply --plan`")
+	cmd.Flags().StringVar(&savePath, "save", "", "also write the preview to this file, for `apply --preview`")
 	return cmd
 }
 
@@ -191,7 +201,7 @@ refuses unless --live is given, and then refuses again if anything is playing.
 The database is backed up first, and every change is journalled so it can be
 reverted with ` + "`plex-sync undo`" + `.
 
-With --plan, it writes the plan saved earlier by ` + "`plan --save`" + ` instead of
+With --preview, it writes the preview saved earlier by ` + "`preview --save`" + ` instead of
 making a fresh one, and never contacts Plex at all. That is how a container
 applies a plan made on the host. The saved plan is not trusted on its own: every
 item is checked against the rows actually in the database first, and anything
@@ -253,7 +263,12 @@ that no longer matches is skipped rather than guessed at.`),
 	}
 	addRunFlags(cmd, &opts)
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm writing to the Plex database")
-	cmd.Flags().StringVar(&planPath, "plan", "", "apply a plan saved by `plan --save` instead of making one (needs no Plex)")
+	cmd.Flags().StringVar(&planPath, "preview", "", "apply a preview saved by `preview --save` instead of making one (needs no Plex)")
+	// The old name is kept so that a script or a crontab written against it
+	// keeps working, and it says so when it is used.
+	cmd.Flags().StringVar(&planPath, "plan", "", "deprecated alias for --preview")
+	_ = cmd.Flags().MarkDeprecated("plan", "use --preview instead")
+	_ = cmd.Flags().MarkHidden("plan")
 	return cmd
 }
 
@@ -451,7 +466,7 @@ func newStatusCmd(g *globals) *cobra.Command {
 
 func printPlan(cmd *cobra.Command, res *sync.Result, show int) {
 	out := stdout(cmd)
-	fmt.Fprintf(out, "planned %d item(s) from %d examined: %d with data, %d without\n",
+	fmt.Fprintf(out, "would change %d item(s) from %d examined: %d with data, %d without\n",
 		res.Survey.Planned, res.Survey.Items, res.Survey.WithData, res.Survey.NoData)
 
 	reasons := make([]string, 0, len(res.Survey.SkipReasons))

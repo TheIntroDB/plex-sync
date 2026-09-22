@@ -179,7 +179,12 @@ writes with --yes.
 	}
 
 	cmd.Flags().StringVar(&cronExpr, "cron", "", "cron expression, five fields, in local time")
-	cmd.Flags().StringVar(&planPath, "plan", "", "apply a plan saved by `plan --save` instead of planning, so no Plex is needed")
+	cmd.Flags().StringVar(&planPath, "preview", "", "apply a preview saved by `preview --save` instead of planning, so no Plex is needed")
+	// The old name is kept so that a script or a crontab written against it
+	// keeps working, and it says so when it is used.
+	cmd.Flags().StringVar(&planPath, "plan", "", "deprecated alias for --preview")
+	_ = cmd.Flags().MarkDeprecated("plan", "use --preview instead")
+	_ = cmd.Flags().MarkHidden("plan")
 	cmd.Flags().BoolVar(&printNext, "print-next", false, "print the next five run times and exit")
 	cmd.Flags().BoolVar(&runOnStart, "run-on-start", false, "run once immediately, then wait for the first firing")
 	cmd.Flags().BoolVar(&once, "once", false, "run a single time and exit, for a systemd or launchd timer")
