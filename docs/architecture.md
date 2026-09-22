@@ -42,6 +42,13 @@ documented, so there is no type to fall back to and no error message that says
 why. That was measured on a real server rather than inferred. Its account
 reports `subscription.active: false`, and its database has never held a marker.
 
+None of that applies to writing markers into the database, which is what this
+tool does. Measured on a server with `subscriptionActive="0"`: a row written into
+`metadata_item_setting_markers` comes straight back from
+`GET /library/metadata/{id}?includeMarkers=1` as an `intro`, and a row written into
+`taggings` never does. Plex Pass gates Plex's own detection and its marker API, not
+what it will read out of its own database.
+
 Everything that can be done over HTTP is done over HTTP. Only the marker write,
 the backup and the undo touch the file.
 

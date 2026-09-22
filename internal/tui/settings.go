@@ -211,10 +211,11 @@ func settingsRows() []setting {
 			// to set: either the library has a marker tag or it does not.
 			section: "Plex", key: "plex.marker_tag", label: "marker tag",
 			kind: settingAction,
-			help: "Markers hang off one row in Plex's tags table, and Plex only creates that row " +
-				"when it writes a marker of its own, which needs Plex Pass. On a server without it, " +
-				"this is the one thing to press before anything can be written: it adds that row, " +
-				"after a backup, and `undo latest` removes it again.",
+			help: "Older Plex versions read markers out of a table whose rows hang off one tag " +
+				"row, and Plex only creates that row when it writes a marker of its own, which " +
+				"needs Plex Pass. On such a server this is the thing to press first: it adds that " +
+				"row, after a backup, and `undo latest` removes it again. Current Plex versions " +
+				"read markers from a table of their own and need none of this.",
 			state: func(m *Model) string {
 				if !m.setup.checked {
 					return "checking..."

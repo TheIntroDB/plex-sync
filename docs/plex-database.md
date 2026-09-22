@@ -18,9 +18,55 @@ the backup and the undo touch the file.
 
 ## Where markers live
 
-Two places must be kept consistent, and Plex reads both:
+Plex has changed where it keeps markers, and this tool writes both places:
 
-### `taggings`
+| storage | read by |
+| --- | --- |
+| `metadata_item_setting_markers` | Plex from schema revision `202309200911` onwards, which is what its API serves |
+| `taggings` and `media_parts.extra_data` | older versions, and the other tools in this space |
+
+A run writes the marker table first, then the older pair. Either one working means
+the skip button appears, which is what keeps a single writer serving every version.
+
+### `metadata_item_setting_markers`
+
+The table Plex reads today. One row per marker:
+
+| column | meaning |
+| --- | --- |
+| `marker_type` | the kind, as a number — see below |
+| `metadata_item_setting_id` | foreign key into `metadata_item_settings`, `ON DELETE CASCADE` |
+| `start_time_offset` | start, in milliseconds |
+| `end_time_offset` | end, in milliseconds |
+| `title` | what Plex shows beside the marker, `Intro` or `Credits` |
+| `extra_data` | this tool stamps it, so its own rows can be told from Plex's |
+
+The numbers are not guessable and are not documented anywhere, so they were
+measured by writing a row and asking Plex what it called the result:
+
+| `marker_type` | Plex reports |
+| --- | --- |
+| 1 | `intro` |
+| 2 | `commercial` |
+| 3 | `bookmark` |
+| 4 | `resume` |
+| 5 | `credits` |
+| 0, and 6 upwards | no type at all |
+
+`metadata_item_settings` is **per account** — it is where playback state lives,
+including `skip_count` and `last_skipped_at` — so a marker has to belong to
+somebody and this tool writes the lowest account id, which is the one Plex used
+for the library owner. Plex only creates a settings row when somebody has actually
+watched the item, so the writer creates one when it is missing; without it there is
+nothing for the foreign key to point at.
+
+Because a settings row can exist before this tool has ever run on an item, a
+marker row with no provenance stamp is treated as Plex's own: it is left alone
+unless `apply.policy` is `prefer-theintrodb`, since Plex's own detection is a
+better answer than a guess. The same reasoning applies to `taggings`, where the
+ledger records what this tool wrote.
+
+### `taggings` (older Plex, and the other tools)
 
 One row per marker.
 
@@ -42,11 +88,13 @@ libraries builds its own zero-based position list from the same ordering and
 finds its values identical to what Plex had stored, byte for byte, across tens
 of thousands of rows.
 
-Every tag must already exist in `tags` with `tag_type = 12`. A database that has
-never had a marker does not have that tag row, and nothing can be written until
-it does. This tool creates it on request — the `setup` command, or the marker tag
-button on the interface's Settings screen. See "Why the marker tag can be created
-after all" below.
+Every tag must already exist in `tags` with `tag_type = 12`. That applies to this
+`taggings` copy, not to the marker table above: Plex 1.43 ignores these rows
+entirely, so on such a server the tag is not needed for markers to appear. A
+database that has never had a marker does not have the tag row, and this tool
+creates it on request — the `setup` command, or the marker tag button on the
+interface's Settings screen. See "Why the marker tag can be created after all"
+below.
 
 ### `media_parts.extra_data`
 
@@ -110,6 +158,28 @@ lookups and for anything else.
 points at its season, and the season's `parent_id` points at the show, which is
 where the season and episode numbers live.
 
+**Id levels are not interchangeable.** Every level of the tree carries ids, and
+they mean different things:
+
+```
+show     Bones                 imdb://tt0460627  tmdb://1911   tvdb://75682
+season                         tmdb://5520       tvdb://9191
+episode  The Man in the Bear   imdb://tt0529895  tmdb://125526 tvdb://298563
+```
+
+TheIntroDB is asked for an episode by **series** id plus season and episode, so an
+episode lookup has to use the show's ids. Building it from the episode's own row
+asks about an id that does not exist — `tmdb_id=125526&season=1&episode=4` answers
+"media not found" every time, while the show's `tmdb_id=1911`, `tvdb_id=75682` and
+`imdb_id=tt0460627` all answer with the same timings. This is worth stating because
+the failure is silent: the tool simply finds nothing for every episode in the
+library and looks like it is working.
+
+The one exception is a library matched by the legacy agents, where an episode's
+guid was `com.plexapp.agents.thetvdb://<series>/<season>/<episode>` and therefore
+does hold the series id. So the show's ids are used when the show has any, and what
+the episode carried is left alone when it does not.
+
 ## Safety rules
 
 The database is a live SQLite file that Plex writes to constantly, including
@@ -135,10 +205,11 @@ while people are streaming. The rules below are not optional.
 
 ## Why the marker tag can be created after all
 
-Marker rows hang off a `tags` row with `tag_type = 12`, and Plex only creates
-that row when it writes a marker of its own, which needs Plex Pass. On a server
-without Plex Pass it never appears, so this tool is the only thing that would ever
-create it. The first release concluded that it could not, and refused instead:
+This is about the `taggings` copy, which older Plex versions read. Rows there hang
+off a `tags` row with `tag_type = 12`, and Plex only creates that row when it
+writes a marker of its own, which needs Plex Pass. On a server without Plex Pass
+it never appears, so this tool is the only thing that would ever create it. The
+first release concluded that it could not, and refused instead:
 
 ```
 CREATE VIRTUAL TABLE fts4_tag_titles_icu USING fts4(

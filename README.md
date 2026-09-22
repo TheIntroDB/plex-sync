@@ -20,8 +20,9 @@ plex-sync setup            # one-time: checks everything, and makes the marker t
 plex-sync sync --yes       # fetch what TheIntroDB has and write it into Plex
 ```
 
-`setup` reports what it found, creates the marker tag if your library has never
-held a marker, and prints the crontab line to keep running afterwards. It writes
+`setup` reports what it found, creates the marker tag older Plex versions need if
+your library has never held a marker, and prints the crontab line to keep running
+afterwards. It writes
 nothing without the same backup and undo journal as any other run, and
 `--dry-run` reports without writing anything at all.
 
@@ -63,6 +64,10 @@ Intro and Skip Credits buttons appear without any local analysis.
 - Read and write access to Plex's database file
   (`com.plexapp.plugins.library.db`). Writing markers requires it, because Plex's
   own marker API needs Plex Pass.
+- **No Plex Pass is needed.** Plex Pass gates Plex's own detection and its marker
+  API, both of which answer 400 without it, but a marker written into the database
+  is served regardless: that was measured on a server reporting
+  `subscriptionActive="0"`.
 - **TMDb metadata is recommended** for accuracy. IMDb and Tvdb ids work as a
   fallback but are less exact for TV episodes.
 
@@ -75,13 +80,13 @@ A token is required, and is read from the machine when you do not supply one:
 `.LocalAdminToken` on a modern Plex install, `Preferences.xml` on the Linux and
 Windows distributions, and the preferences plist on older macOS installs.
 
-**One thing to know about the marker tag.** Markers hang off a tag row that Plex
-creates the first time it writes a marker of its own, which needs Plex Pass, so a
-server without it has never made one. `plex-sync setup` creates that row, or you
-can press the marker tag button on the Settings screen of the interface; either
-way it is one row, written after a backup, and `undo latest` removes it again.
-Nothing else about Plex's database is touched. A server that already has a marker,
-from Plex or from another tool, needs no setup at all.
+**One thing to know about the marker tag.** Older Plex versions keep markers in a
+`taggings` table, and those rows hang off a tag row Plex only creates when it
+writes a marker of its own, which needs Plex Pass. `plex-sync setup` creates that
+row, or you can press the marker tag button on the Settings screen; either way it
+is one row, written after a backup, and `undo latest` removes it again. Current
+Plex versions read markers from a table of their own instead, so on those the
+setup step only matters for the older-version copy.
 
 An API key is optional. With one, the daily allowance is higher and your own
 pending submissions are included in what you get back.

@@ -110,9 +110,9 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 			} else {
 				fmt.Fprintln(out, "marker tag          MISSING")
 				fmt.Fprintln(out, "                    Plex has never written a marker in this library, so the")
-				fmt.Fprintln(out, "                    tag that markers attach to does not exist. Markers cannot")
-				fmt.Fprintln(out, "                    be written without it, and Plex only makes one itself with")
-				fmt.Fprintln(out, "                    Plex Pass. This creates it.")
+				fmt.Fprintln(out, "                    tag its older marker table hangs off does not exist. Current")
+				fmt.Fprintln(out, "                    Plex versions read markers from a table of their own and do")
+				fmt.Fprintln(out, "                    not need it, but this keeps the older path working too.")
 
 				switch {
 				case dryRun:

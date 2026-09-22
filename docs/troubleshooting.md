@@ -55,8 +55,10 @@ check. Doing so is not recommended.
 ## "no marker tag"
 
 The Plex database has no marker tag (`tags` row with `tag_type = 12`), which means
-Plex has never created a marker of its own. New markers have to hang off that tag,
-so nothing can be written until it exists.
+Plex has never created a marker of its own. The `taggings` rows older Plex versions
+read have to hang off that tag, so those cannot be written until it exists. Plex
+1.43 reads markers from its own table instead and does not need the tag at all, so
+this message is informational on such a server.
 
 Creating it is a one-time step, and this tool does it on request:
 
@@ -78,6 +80,40 @@ behind it, is in [plex-database.md](plex-database.md).
 Nothing else is affected. If your server already has the tag, this never comes up:
 `taggings` and `media_parts`, the tables this tool does write to, carry no
 triggers.
+
+## The skip button does not appear
+
+Check what Plex itself says first, because that is the whole question:
+
+```bash
+curl -s -H 'Accept: application/json' \
+  "http://127.0.0.1:32400/library/metadata/<ratingKey>?includeMarkers=1&X-Plex-Token=<token>" \
+  | python3 -m json.tool | grep -A4 Marker
+```
+
+If Plex reports the marker, the write is fine and the problem is the client or the
+player, not the database. If it reports none, work down this list:
+
+1. **Is the marker in `metadata_item_setting_markers`?** On Plex 1.43 and later
+   that is the table it reads, and a marker written only to `taggings` is invisible
+   to it. There is no `metadata_item_setting_markers` on older servers, and there
+   the `taggings` row is the one that counts.
+2. **Does the item have a `metadata_item_settings` row?** Markers hang off one by
+   foreign key. Plex creates these as people watch things, and the tool creates one
+   when it is missing, so this is only a problem if a run was interrupted.
+3. **Was anything written at all?** `plex-sync status` shows the last run, and
+   `plex-sync preview --show "<title>"` says whether the item has data to write.
+   An episode that TheIntroDB has no timings for is skipped by design.
+4. **A marker Plex detected is not replaced** unless `apply.policy` is
+   `prefer-theintrodb`. That is deliberate: Plex's own detection beats a guess.
+5. **Plex Pass is not needed for this.** It is needed for Plex's *own* detection
+   and for its marker API, both of which answer 400 without it, but a marker
+   written into the database is served on a server without Plex Pass — which is
+   how this was confirmed in the first place.
+
+A restart is not needed, and neither is a metadata reimport: both were tried while
+this was being worked out, and neither made a marker appear that was in the wrong
+table.
 
 ## Everything is skipped as a PAL speed-up
 
