@@ -37,25 +37,6 @@ func (m *Model) activateSetting() (tea.Model, tea.Cmd) {
 	row := rows[m.cursor]
 
 	switch row.kind {
-	case settingAction:
-		if row.run == nil {
-			return m, nil
-		}
-		// Once the row reports the tag is there, pressing it is not an action
-		// to confirm: there is nothing left to do, and offering a confirmation
-		// for a write that will not happen is how a button stops being believed.
-		if row.key == "plex.marker_tag" && m.setup.checked && m.setup.tagError == "" {
-			m.setStatus(fmt.Sprintf(
-				"this library already has a marker tag (tag %d), so there is nothing to create", m.setup.tagID))
-			return m, nil
-		}
-		// A confirmation, because this is the only row on the screen that
-		// writes to the Plex database rather than to a file of ours.
-		m.confirmSetup = true
-		m.setStatus(fmt.Sprintf(
-			"%s: this writes one row to the Plex database, after a backup; y to confirm", row.label))
-		return m, nil
-
 	case settingBool:
 		current := row.get(m.app.Cfg) == "true"
 		next := fmt.Sprintf("%t", !current)
@@ -80,17 +61,6 @@ func (m *Model) activateSetting() (tea.Model, tea.Cmd) {
 		m.setStatus(fmt.Sprintf("%s: type a value, enter to save, esc to cancel", row.key))
 		return m, nil
 	}
-}
-
-// markerTagRow is where the marker tag button sits, so that the first run can
-// put the cursor on it instead of describing its position in words.
-func markerTagRow() int {
-	for index, row := range settingsRows() {
-		if row.key == "plex.marker_tag" {
-			return index
-		}
-	}
-	return 0
 }
 
 // handleEditKey deals with the keyboard while a value is being typed.

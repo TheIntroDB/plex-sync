@@ -47,6 +47,14 @@ type Options struct {
 	SkipSessionCheck bool
 	// NoBackup skips the pre-write backup. It is deliberately awkward to reach.
 	NoBackup bool
+	// ForceCreateInitialTag makes the marker tag when the database has none.
+	//
+	// Older Plex versions read markers out of a table whose rows hang off that
+	// tag, so a library that has never held a marker has nowhere for those rows
+	// to go. Current versions read a table of their own and need no tag at all,
+	// which is why this is a flag for a migration or a diagnosis rather than
+	// something a run does by default or a setting anybody stumbles across.
+	ForceCreateInitialTag bool
 	// Sources overrides the enabled alternate sources for this run.
 	Sources []string
 	// Progress receives stage and item updates. It may be nil.
@@ -406,16 +414,15 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 	// rest.
 	tagID, err := db.MarkerTagID()
 	if err != nil {
-		if !cfg.Apply.CreateMissingMarkerTag {
+		if !opts.ForceCreateInitialTag {
 			_ = journal.Close()
 			return fmt.Errorf(
-				"the Plex database has no marker tag, so a marker has nothing to attach to. "+
-					"Plex makes that row the first time it writes a marker itself, which needs "+
-					"Plex Pass, so on a server without it this tool makes the row instead: run "+
-					"'plex-sync setup' to do it as a one-time step, or set "+
-					"apply.create_missing_marker_tag = true (PLEX_SYNC_CREATE_MARKER_TAG=1) to "+
-					"let every run do it. The row is created with the same backup and undo "+
-					"journal as any other write: %w", err)
+				"the Plex database has no marker tag, so the marker rows have nothing to hang "+
+					"off. Plex makes that row the first time it writes a marker itself, and a "+
+					"library that has never held one has never had it made: run once with "+
+					"--force-create-initial-tag to create it, which is a debug and first-run "+
+					"step rather than part of a normal run. It is written with the same backup "+
+					"and undo journal as everything else: %w", err)
 		}
 		tagID, err = db.MarkerTagIDOrCreate(ctx, journal)
 		if err != nil {

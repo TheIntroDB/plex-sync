@@ -96,8 +96,9 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 
 			// --- the marker tag ----------------------------------------------
 			//
-			// The one thing a library needs before markers can be written, and
-			// the one thing nobody can be expected to know about.
+			// Only older Plex versions need it: their marker rows hang off this
+			// tag, and current versions read a table of their own. So this is
+			// reported rather than acted on, and made only when asked for.
 			fmt.Fprintln(out)
 			db, err := application.PlexDB(false)
 			if err != nil {
@@ -106,18 +107,19 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 			}
 
 			if tagID, err := db.MarkerTagID(); err == nil {
-				fmt.Fprintf(out, "marker tag          present (tag %d), nothing to do here\n", tagID)
+				fmt.Fprintf(out, "marker tag          present (tag %d)\n", tagID)
 			} else {
-				fmt.Fprintln(out, "marker tag          MISSING")
-				fmt.Fprintln(out, "                    Plex has never written a marker in this library, so the")
-				fmt.Fprintln(out, "                    tag its older marker table hangs off does not exist. Current")
-				fmt.Fprintln(out, "                    Plex versions read markers from a table of their own and do")
-				fmt.Fprintln(out, "                    not need it, but this keeps the older path working too.")
+				fmt.Fprintln(out, "marker tag          absent")
+				fmt.Fprintln(out, "                    Plex creates one when it writes a marker of its own, and")
+				fmt.Fprintln(out, "                    only its older marker table needs it. Plex 1.43 and later")
+				fmt.Fprintln(out, "                    read markers from a different table, so nothing is missing")
+				fmt.Fprintln(out, "                    for those. For an older server, add the flag:")
+				fmt.Fprintln(out, "                      plex-sync sync --yes --force-create-initial-tag")
 
 				switch {
 				case dryRun:
-					fmt.Fprintln(out, "                    --dry-run, so it was not created")
-				default:
+					fmt.Fprintln(out, "                    --dry-run, so nothing was created")
+				case opts.ForceCreateInitialTag:
 					if err := createMarkerTagForSetup(cmd, application, opts); err != nil {
 						fmt.Fprintf(out, "                    FAILED: %v\n", err)
 						return &silentError{code: ExitError}
@@ -164,6 +166,10 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would happen without writing")
+	// The one thing here that touches Plex's schema, and only older versions
+	// need it: a debug and migration flag rather than a step to walk through.
+	cmd.Flags().BoolVar(&opts.ForceCreateInitialTag, "force-create-initial-tag", false,
+		"make the marker tag older Plex versions need, when the database has none (debug)")
 	cmd.Flags().BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
 	cmd.Flags().BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	cmd.Flags().BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")

@@ -84,13 +84,6 @@ type Model struct {
 	// Confirmation state for the actions that touch the database.
 	confirmApply bool
 	confirmUndo  bool
-	confirmSetup bool
-
-	// setup is what the marker tag row shows, and setupSeen records that the
-	// first check has happened, so that the pointer to it is only given once
-	// rather than on every refresh.
-	setup     setupState
-	setupSeen bool
 
 	// status is the one-line message at the bottom of the screen.
 	status  string
@@ -133,31 +126,6 @@ func newModel(ctx context.Context, opts Options) *Model {
 
 type readinessMsg struct{ readiness app.Readiness }
 
-// setupMsg is the answer to "can this library be written to at all".
-type setupMsg struct {
-	tagID    int64
-	tagError string
-	err      error
-}
-
-// setupDoneMsg reports making the marker tag.
-type setupDoneMsg struct {
-	tagID   int64
-	journal string
-	err     error
-}
-
-// setupState is what the setup screen knows. tagError is set when the library
-// has no marker tag, which is not an error to report but the reason the screen
-// exists.
-type setupState struct {
-	checked  bool
-	tagID    int64
-	tagError string
-	journal  string
-	err      error
-}
-
 type statsMsg struct {
 	stats *ledger.Stats
 	runs  []ledger.Run
@@ -189,7 +157,7 @@ type progressMsg struct{ event sync.Event }
 type statusMsg struct{ text string }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.loadStatus(), m.loadReadiness(), m.loadSetup())
+	return tea.Batch(m.loadStatus(), m.loadReadiness())
 }
 
 // --- commands --------------------------------------------------------------
@@ -199,29 +167,6 @@ func (m *Model) loadReadiness() tea.Cmd {
 		ctx, cancel := context.WithTimeout(m.ctx, 15*time.Second)
 		defer cancel()
 		return readinessMsg{readiness: m.app.Ready(ctx)}
-	}
-}
-
-// loadSetup asks whether this library can be written to, so the interface can
-// say so before a run fails instead of after. It reads and writes nothing.
-func (m *Model) loadSetup() tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(m.ctx, 15*time.Second)
-		defer cancel()
-		id, err := m.runner.MarkerTagID(ctx)
-		if err != nil {
-			return setupMsg{tagError: err.Error()}
-		}
-		return setupMsg{tagID: id}
-	}
-}
-
-// runSetup makes the marker tag through the runner, so it takes the same
-// preflight, backup and journal as any other write.
-func (m *Model) runSetup() tea.Cmd {
-	return func() tea.Msg {
-		id, journal, err := m.runner.EnsureMarkerTag(m.ctx, sync.Options{Confirm: true})
-		return setupDoneMsg{tagID: id, journal: journal, err: err}
 	}
 }
 
@@ -373,29 +318,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus(fmt.Sprintf("plan ready: %d item(s) to change", len(m.result.Plan.Work())))
 		return m, m.loadStatus()
 
-	case setupMsg:
-		m.setup = setupState{checked: true, tagID: msg.tagID, tagError: msg.tagError, err: msg.err}
-		// A library with no marker tag cannot take a marker, and nothing about
-		// installing this says so. Say where the fix lives rather than growing a
-		// screen of its own for something that happens once.
-		if msg.tagError != "" && !m.setupSeen {
-			m.cursor = markerTagRow()
-			m.setStatus("no marker tag yet: press 5 for Settings, then enter on the marker tag row")
-		}
-		m.setupSeen = true
-		return m, nil
-
-	case setupDoneMsg:
-		m.finishLoad()
-		if msg.err != nil {
-			m.setup.err = msg.err
-			m.setStatus("could not make the marker tag: " + msg.err.Error())
-			return m, nil
-		}
-		m.setup = setupState{checked: true, tagID: msg.tagID, journal: msg.journal}
-		m.setStatus(fmt.Sprintf("marker tag %d is ready: press tab to carry on", msg.tagID))
-		return m, nil
-
 	case applyMsg:
 		m.finishLoad()
 		if msg.err != nil {
@@ -466,7 +388,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// A confirmation takes the whole keyboard, so a stray key cannot cause a
 	// write.
-	if m.confirmApply || m.confirmUndo || m.confirmSetup {
+	if m.confirmApply || m.confirmUndo {
 		switch strings.ToLower(msg.String()) {
 		case "y", "enter":
 			if m.confirmApply {
@@ -481,14 +403,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.setStatus("reverting...")
 				return m, m.runUndo()
 			}
-			m.confirmSetup = false
-			m.startLoad("setup", 1)
-			m.setStatus("making the marker tag...")
-			return m, m.runSetup()
+			return m, nil
 		default:
 			m.confirmApply = false
 			m.confirmUndo = false
-			m.confirmSetup = false
 			m.setStatus("cancelled")
 			return m, nil
 		}

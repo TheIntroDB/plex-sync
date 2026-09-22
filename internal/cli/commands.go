@@ -34,6 +34,11 @@ func addRunFlags(cmd *cobra.Command, opts *sync.Options) {
 	flags.BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
 	flags.BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")
 	flags.BoolVar(&opts.NoBackup, "no-backup", false, "skip the pre-write database backup")
+	// Deliberately verbose and deliberately here rather than in the settings:
+	// it touches Plex's schema, current versions do not need it, and nobody
+	// should find it by reading a configuration file.
+	flags.BoolVar(&opts.ForceCreateInitialTag, "force-create-initial-tag", false,
+		"make the marker tag older Plex versions need, when the database has none (debug)")
 }
 
 // --- library ---------------------------------------------------------------

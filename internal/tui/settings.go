@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/TheIntroDB/plex-sync/internal/config"
 	"github.com/TheIntroDB/plex-sync/internal/schedule"
 )
@@ -25,10 +23,6 @@ const (
 	settingInt
 	// settingChoice cycles through a fixed set with enter.
 	settingChoice
-	// settingAction is a button. Enter runs it rather than opening an editor,
-	// and it is the only row whose value does not come from the configuration
-	// file: what a button shows is the state of something out in the world.
-	settingAction
 )
 
 // setting is one editable row on the Settings screen.
@@ -55,23 +49,10 @@ type setting struct {
 	// and "not set" while the tool was using a value it had found, which reads
 	// as a fault in a screen whose whole job is to say what is going on.
 	fallback func(*config.Config) string
-
-	// state is what a button shows, read from the program rather than from the
-	// configuration, and run is what pressing enter does after confirmation.
-	state func(*Model) string
-	run   func(*Model) tea.Cmd
 }
 
 // display renders a row's value, masking anything secret.
 func (s setting) display(m *Model) string {
-	if s.kind == settingAction {
-		if s.state == nil {
-			return ""
-		}
-		// A button says what pressing it would do, or what has already been
-		// done, because that is the whole of what it reports.
-		return s.state(m)
-	}
 	cfg := m.app.Cfg
 	value := s.get(cfg)
 	switch s.kind {
@@ -205,28 +186,6 @@ func settingsRows() []setting {
 			},
 		},
 
-		{
-			// The one row here that writes to Plex's database rather than to
-			// the configuration file. It is a button because there is no value
-			// to set: either the library has a marker tag or it does not.
-			section: "Plex", key: "plex.marker_tag", label: "marker tag",
-			kind: settingAction,
-			help: "Older Plex versions read markers out of a table whose rows hang off one tag " +
-				"row, and Plex only creates that row when it writes a marker of its own, which " +
-				"needs Plex Pass. On such a server this is the thing to press first: it adds that " +
-				"row, after a backup, and `undo latest` removes it again. Current Plex versions " +
-				"read markers from a table of their own and need none of this.",
-			state: func(m *Model) string {
-				if !m.setup.checked {
-					return "checking..."
-				}
-				if m.setup.tagError != "" {
-					return "missing, enter to create it"
-				}
-				return fmt.Sprintf("present, tag %d", m.setup.tagID)
-			},
-			run: func(m *Model) tea.Cmd { return m.runSetup() },
-		},
 		{
 			section: "TheIntroDB", key: "theintrodb.api_key", label: "API key", kind: settingSecret,
 			help: "Optional. A key raises the daily allowance and is required to submit timings.",

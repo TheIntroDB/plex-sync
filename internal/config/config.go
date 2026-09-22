@@ -143,7 +143,11 @@ type Apply struct {
 	ChunkSize                  int  `toml:"chunk_size"`
 	// PALGuard ignores community timings for PAL speed-up files.
 	PALGuard bool `toml:"pal_guard"`
-	// CreateMissingMarkerTag creates the marker tag when Plex has not made one.
+	// CreateMissingMarkerTag is kept only so that a configuration file written
+	// when this was a setting still loads: the loader rejects unknown keys. Read
+	// nothing from it -- the way to ask for the tag now is the
+	// --force-create-initial-tag flag, and leaving it out costs nothing on a
+	// current Plex.
 	//
 	// Off by default: inventing a schema row is a bigger step than writing a
 	// marker, so it is taken deliberately. It is needed on a server without Plex
@@ -565,6 +569,12 @@ func Load(path string) (*Config, error) {
 			}
 			return nil, fmt.Errorf("%s: unknown key(s): %s", path, strings.Join(keys, ", "))
 		}
+		// apply.create_missing_marker_tag was a setting and is a flag now. The
+		// key is still accepted so that a file written when it was one does not
+		// fail to load -- the check above rejects unknown keys -- and it is
+		// discarded here so that it cannot write Plex's schema either. Asking for
+		// the tag is --force-create-initial-tag, on a command, once.
+		cfg.Apply.CreateMissingMarkerTag = false
 	}
 	cfg.applyEnv()
 	if err := cfg.Validate(); err != nil {
@@ -614,7 +624,6 @@ func (c *Config) applyEnv() {
 	boolean("PLEX_SYNC_CHAPTERS", &c.Sources.Chapters)
 	boolean("PLEX_SYNC_DETECTION", &c.Sources.Detection)
 	boolean("PLEX_SYNC_ALLOW_LIVE", &c.Apply.AllowLive)
-	boolean("PLEX_SYNC_CREATE_MARKER_TAG", &c.Apply.CreateMissingMarkerTag)
 
 	str("PLEX_SYNC_SCHEDULE", &c.Schedule.Cron)
 	boolean("PLEX_SYNC_RUN_ON_START", &c.Schedule.RunOnStart)
