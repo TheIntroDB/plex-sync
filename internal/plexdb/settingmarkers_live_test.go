@@ -84,11 +84,13 @@ func TestLiveTheMarkersReachTheTablePlexReads(t *testing.T) {
 	}
 	ratingKey, _ := liveMovie(t, db)
 
-	// Start from an item with no marker rows of its own. The real library this
-	// runs against may already have one -- Plex detected it, or an earlier run
-	// of this tool wrote it -- and under the default policy a marker that is not
-	// ours is deliberately left alone, which would make this test measure that
-	// instead. This is a copy, so clearing them costs nothing.
+	// Start from an item with no markers in either place. The real library this
+	// runs against may already have some -- Plex detected them, or an earlier run
+	// of this tool wrote them -- and both storages have to be emptied, not just
+	// the new one: a marker left in taggings would be carried into the plan as
+	// something to keep, and then this test would be measuring the writer's
+	// handling of a kind that has two answers rather than the write itself.
+	// Clearing is free because this is a copy.
 	if _, err := db.db.ExecContext(ctx,
 		`DELETE FROM `+markerTable+` WHERE metadata_item_setting_id IN (
 		     SELECT id FROM metadata_item_settings
@@ -97,6 +99,7 @@ func TestLiveTheMarkersReachTheTablePlexReads(t *testing.T) {
 		_ = db.Close()
 		t.Fatalf("clear the marker table for the item: %v", err)
 	}
+	clearMarkerRows(t, db, ratingKey)
 	before := settingMarkerCounts(t, path, ratingKey)
 
 	journalPath := filepath.Join(t.TempDir(), "undo.jsonl")
@@ -113,11 +116,9 @@ func TestLiveTheMarkersReachTheTablePlexReads(t *testing.T) {
 		_ = db.Close()
 		t.Fatalf("read the markers already there: %v", err)
 	}
-	kept := make([]model.Marker, 0, len(liveMarkers))
-	for _, m := range liveMarkers {
-		kept = append(kept, model.Marker{
-			Text: model.MarkerText(m.Text), StartMS: m.StartMS, EndMS: m.EndMS, Source: "plex",
-		})
+	if len(liveMarkers) != 0 {
+		_ = db.Close()
+		t.Fatalf("the item still has %d marker row(s) after clearing it", len(liveMarkers))
 	}
 	added := []model.Marker{
 		{Text: model.MarkerIntro, StartMS: 5_000, EndMS: 42_000, Source: "theintrodb"},
@@ -126,7 +127,7 @@ func TestLiveTheMarkersReachTheTablePlexReads(t *testing.T) {
 	plan := model.ItemPlan{
 		Item:    model.LibraryItem{RatingKey: int(ratingKey), Kind: model.KindMovie, Title: "marker table"},
 		Kept:    liveMarkers,
-		Desired: append(append([]model.Marker{}, kept...), added...),
+		Desired: added,
 		Add:     added,
 	}
 

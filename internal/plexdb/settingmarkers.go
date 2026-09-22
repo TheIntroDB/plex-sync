@@ -265,33 +265,39 @@ func (d *DB) writeSettingMarkers(
 			continue
 		}
 
-		// One marker per kind is what Plex holds. Extra rows of ours are removed;
-		// one of Plex's is kept unless the plan says replace.
-		kept := false
+		// One marker per kind is what Plex holds, so at most one row of ours can
+		// be kept. Two questions decide what happens: does a row already hold the
+		// range the plan wants, and is a row in the way one we are allowed to
+		// remove?
+		holds := false
+		blocked := false
 		for _, m := range have {
 			switch {
-			case m.IsOurs && !kept:
-				kept = true
-				if m.StartMS == want[0].StartMS && m.EndMS == want[0].EndMS {
-					continue
-				}
+			case m.StartMS == want[0].StartMS && m.EndMS == want[0].EndMS:
+				// Ours or Plex's: the range asked for is already there.
+				holds = true
+			case m.IsOurs:
+				// Ours, with a range the plan has moved on from. It goes, and
+				// the new range is written below: deleting without inserting is
+				// how a marker silently disappears.
 				if err := deleteSettingMarker(ctx, tx, m, ratingKey, j); err != nil {
 					return written, err
 				}
-			case replace && !m.IsOurs && !kept:
-				kept = true
-				if m.StartMS == want[0].StartMS && m.EndMS == want[0].EndMS {
-					continue
-				}
+			case replace:
+				// Plex's own, and the configuration says this tool's answer
+				// wins for this kind.
 				if err := deleteSettingMarker(ctx, tx, m, ratingKey, j); err != nil {
 					return written, err
 				}
-			case !kept && m.StartMS == want[0].StartMS && m.EndMS == want[0].EndMS:
-				// Plex's own marker, already the range the plan wanted.
-				kept = true
+			default:
+				// Plex's own, and it is not to be touched. Ours is not added
+				// beside it either: the plan was built without seeing this row,
+				// and Plex holds one marker per kind, so adding ours would mean
+				// choosing between two answers this tool cannot compare.
+				blocked = true
 			}
 		}
-		if kept {
+		if holds || blocked {
 			continue
 		}
 
