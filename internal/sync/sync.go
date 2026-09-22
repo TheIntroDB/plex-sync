@@ -20,6 +20,7 @@ import (
 	"github.com/TheIntroDB/plex-sync/internal/model"
 	"github.com/TheIntroDB/plex-sync/internal/planfile"
 	"github.com/TheIntroDB/plex-sync/internal/planner"
+	"github.com/TheIntroDB/plex-sync/internal/plexapi"
 	"github.com/TheIntroDB/plex-sync/internal/plexdb"
 	"github.com/TheIntroDB/plex-sync/internal/source"
 	"github.com/TheIntroDB/plex-sync/internal/tidb"
@@ -137,10 +138,74 @@ func (r *Runner) Inventory(ctx context.Context, opts Options) ([]model.LibraryIt
 	if err != nil {
 		return nil, fmt.Errorf("read the Plex library: %w", err)
 	}
-	return filterItems(items, opts), nil
+	return filterItems(r.withShowIDs(ctx, items), opts), nil
 }
 
 // Plan surveys the library and computes what a run would change.
+
+// withShowIDs replaces an episode's provider ids with those of the show it
+// belongs to, which is what TheIntroDB is asked about.
+//
+// Plex stores ids at every level and they are not interchangeable: on a modern
+// library an episode's row has the episode's own TMDb id, and asking for
+// "tmdb_id=<that>&season=1&episode=4" answers "media not found" every time, so
+// every episode in the library was being passed over. The show's row holds the
+// series id, and the series id is what the question needs.
+//
+// Where the show has no ids of its own, what the episode carried is left alone
+// on purpose: the legacy Plex agents stored the *series* id on the episode as
+// com.plexapp.agents.thetvdb://<series>/<season>/<episode>, and that parses to
+// exactly the id wanted. Losing an old library to fix a new one would be a poor
+// trade.
+func (r *Runner) withShowIDs(ctx context.Context, items []model.LibraryItem) []model.LibraryItem {
+	var episodeKeys []int64
+	for _, item := range items {
+		if item.Kind == model.KindEpisode {
+			episodeKeys = append(episodeKeys, int64(item.RatingKey))
+		}
+	}
+	if len(episodeKeys) == 0 {
+		return items
+	}
+
+	db, err := r.app.PlexDB(true)
+	if err != nil {
+		r.app.Log.Warn("reading the library without the Plex database, so episodes keep their own ids",
+			"error", err)
+		return items
+	}
+	shows, err := db.ShowProviderIDs(ctx, episodeKeys)
+	if err != nil {
+		r.app.Log.Warn("could not read the shows behind the episodes; they keep their own ids",
+			"error", err)
+		return items
+	}
+
+	replaced := 0
+	for i := range items {
+		if items[i].Kind != model.KindEpisode {
+			continue
+		}
+		tags, ok := shows[int64(items[i].RatingKey)]
+		if !ok {
+			continue
+		}
+		ids := plexapi.ParseProviderIDs(tags)
+		if !ids.Any() {
+			continue
+		}
+		if ids != items[i].IDs {
+			replaced++
+		}
+		items[i].IDs = ids
+	}
+	if replaced > 0 {
+		r.app.Log.Info("looked up the show behind each episode",
+			"episodes", len(episodeKeys), "changed", replaced)
+	}
+	return items
+}
+
 func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 	started := r.now()
 	cfg := r.app.Cfg
@@ -163,7 +228,7 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the Plex library: %w", err)
 	}
-	items = filterItems(items, opts)
+	items = filterItems(r.withShowIDs(ctx, items), opts)
 
 	res := &Result{}
 	res.Survey.Sections = len(sectionKeys)

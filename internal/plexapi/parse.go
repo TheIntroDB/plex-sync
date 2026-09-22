@@ -298,6 +298,11 @@ func guidIDs(raws ...json.RawMessage) []string {
 	return out
 }
 
+// ParseProviderIDs is parseExternalIDs for callers outside this package, so that
+// a provider id read out of the database is parsed by the same code as one read
+// out of the API.
+func ParseProviderIDs(guids []string) model.ExternalIDs { return parseExternalIDs(guids) }
+
 // parseExternalIDs picks the provider ids out of Plex's guid strings, which
 // look like tmdb://1396, imdb://tt0944947, tvdb://121361, or the legacy agent
 // form com.plexapp.agents.themoviedb://1396?lang=en.
