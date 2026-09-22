@@ -36,7 +36,7 @@ func (m *Model) View() string {
 	body := m.body()
 	sections = append(sections, body)
 
-	if m.confirmApply || m.confirmUndo {
+	if m.confirmApply || m.confirmUndo || m.confirmSetup {
 		sections = append(sections, m.confirmation())
 	} else {
 		sections = append(sections, m.footer())
@@ -113,6 +113,12 @@ func (m *Model) statusScreen() string {
 		b.WriteString("  TheIntroDB    " + m.ok(m.readiness.TIDBOK, status, m.readiness.TIDBError) + "\n")
 	}
 	b.WriteString("  Plex database " + styleDim.Render(orUnknown(m.app.PlexDBPath(), "not configured")) + "\n")
+	if m.setup.checked && m.setup.tagError != "" {
+		// Said here rather than on a screen of its own: it is one row, it is
+		// needed once, and the interface it is needed in already exists.
+		b.WriteString("  Markers       " + styleWarn.Render("cannot be written yet") + "  " +
+			styleDim.Render("no marker tag: press 5, then enter on it") + "\n")
+	}
 
 	b.WriteString("\n" + styleTitle.Render("Requests") + "\n")
 	used := 0
@@ -333,7 +339,7 @@ func (m *Model) settingsScreen() string {
 		// being read in a terminal that has no colour.
 		marker := "  "
 		label := fmt.Sprintf("%-20s", row.label)
-		value := row.display(cfg)
+		value := row.display(m)
 
 		if i == m.cursor {
 			marker = styleKey.Render("> ")
@@ -397,6 +403,10 @@ func (m *Model) confirmation() string {
 		prompt = fmt.Sprintf(
 			"Write %d marker(s) across %d item(s) to the Plex database?", added, work)
 	}
+	if m.confirmSetup {
+		prompt = "Create the marker tag in the Plex database? " +
+			"One row is added, after a backup, and undo latest removes it again."
+	}
 	if m.confirmUndo {
 		prompt = "Revert the most recent run, restoring the previous marker rows?"
 	}
@@ -419,7 +429,10 @@ func (m *Model) footer() string {
 			b.WriteString(styleDim.Render("  "+truncate(m.status, 120)) + "\n")
 		}
 	}
-	keys := "1-5 screens   tab next   r refresh   l library   p plan   a apply   u undo   q quit"
+	keys := "1-5 screens   tab next   r refresh   l library   p preview   a write   u undo   q quit"
+	if m.screen == screenSettings {
+		keys = "up/down move   enter change   tab next   q quit"
+	}
 	b.WriteString(styleDim.Render("  " + keys))
 	return b.String()
 }

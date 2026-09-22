@@ -351,7 +351,7 @@ func TestSecretsAreNeverDisplayed(t *testing.T) {
 	if strings.Contains(m.View(), secret) {
 		t.Error("the screen contains the key")
 	}
-	if got := row.display(m.app.Cfg); got != "set, hidden" {
+	if got := row.display(m); got != "set, hidden" {
 		t.Errorf("the row shows %q, want it hidden", got)
 	}
 }

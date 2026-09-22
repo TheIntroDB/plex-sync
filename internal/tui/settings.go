@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/TheIntroDB/plex-sync/internal/config"
 	"github.com/TheIntroDB/plex-sync/internal/schedule"
 )
@@ -23,6 +25,10 @@ const (
 	settingInt
 	// settingChoice cycles through a fixed set with enter.
 	settingChoice
+	// settingAction is a button. Enter runs it rather than opening an editor,
+	// and it is the only row whose value does not come from the configuration
+	// file: what a button shows is the state of something out in the world.
+	settingAction
 )
 
 // setting is one editable row on the Settings screen.
@@ -42,10 +48,24 @@ type setting struct {
 	// start returns what the input line begins with. Secrets start empty, so
 	// an existing key is never put back on the screen.
 	start func(*config.Config) string
+
+	// state is what a button shows, read from the program rather than from the
+	// configuration, and run is what pressing enter does after confirmation.
+	state func(*Model) string
+	run   func(*Model) tea.Cmd
 }
 
 // display renders a row's value, masking anything secret.
-func (s setting) display(cfg *config.Config) string {
+func (s setting) display(m *Model) string {
+	if s.kind == settingAction {
+		if s.state == nil {
+			return ""
+		}
+		// A button says what pressing it would do, or what has already been
+		// done, because that is the whole of what it reports.
+		return s.state(m)
+	}
+	cfg := m.app.Cfg
 	value := s.get(cfg)
 	switch s.kind {
 	case settingBool:
@@ -149,6 +169,27 @@ func settingsRows() []setting {
 			set:  func(c *config.Config, v string) error { c.Plex.Database = strings.TrimSpace(v); return nil },
 		},
 
+		{
+			// The one row here that writes to Plex's database rather than to
+			// the configuration file. It is a button because there is no value
+			// to set: either the library has a marker tag or it does not.
+			section: "Plex", key: "plex.marker_tag", label: "marker tag",
+			kind: settingAction,
+			help: "Markers hang off one row in Plex's tags table, and Plex only creates that row " +
+				"when it writes a marker of its own, which needs Plex Pass. On a server without it, " +
+				"this is the one thing to press before anything can be written: it adds that row, " +
+				"after a backup, and `undo latest` removes it again.",
+			state: func(m *Model) string {
+				if !m.setup.checked {
+					return "checking..."
+				}
+				if m.setup.tagError != "" {
+					return "missing, enter to create it"
+				}
+				return fmt.Sprintf("present, tag %d", m.setup.tagID)
+			},
+			run: func(m *Model) tea.Cmd { return m.runSetup() },
+		},
 		{
 			section: "TheIntroDB", key: "theintrodb.api_key", label: "API key", kind: settingSecret,
 			help: "Optional. A key raises the daily allowance and is required to submit timings.",
