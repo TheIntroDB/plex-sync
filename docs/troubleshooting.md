@@ -9,7 +9,7 @@ both services, and its output usually names the problem.
 anything when you press play, so a library that has never been synced has no
 markers.
 
-1. `plex-sync plan` prints what a run intends to do. If it says nothing to do,
+1. `plex-sync preview` prints what a run intends to do. If it says nothing to do,
    the next two checks explain why.
 2. `plex-sync library` lists every item with the id a lookup would use. Items
    showing `no id` cannot be looked up at all.
@@ -52,24 +52,31 @@ to write safely, and a write that goes wrong can corrupt the database.
 If you genuinely accept that risk, `plex.allow_fuse_path = true` bypasses the
 check. Doing so is not recommended.
 
-## "no marker tag yet"
+## "no marker tag"
 
-The Plex database has no marker tag (`tags` row with `tag_type = 12`), which
-means Plex has never created a marker of its own. New markers have to hang off
-that tag.
+The Plex database has no marker tag (`tags` row with `tag_type = 12`), which means
+Plex has never created a marker of its own. New markers have to hang off that tag,
+so nothing can be written until it exists.
 
-That row cannot be created from outside Plex. The `tags` table carries an FTS4
-trigger whose table uses Plex's own ICU tokenizer, so every write to it fails
-before the trigger's condition is even considered. The `sqlite3` command fails on
-it too, and so would a build with FTS4 compiled in.
+Creating it is a one-time step, and this tool does it on request:
 
-Let Plex create it: it makes one the first time it writes a marker of its own.
-That is a Plex Pass feature, so on a server without Plex Pass this tool cannot
-write markers at all, and says so. The full explanation, with the measurements
+```bash
+plex-sync setup          # checks everything and makes the tag
+```
+
+or the marker tag button on the Settings screen of the interface. It is one row,
+the database is backed up first, and `undo latest --yes` removes it again.
+
+The reason it is not automatic is that it touches Plex's schema rather than data:
+the `tags` table carries four FTS4 triggers whose table uses Plex's own ICU
+tokenizer, so the triggers are dropped for the duration of the write and put back
+exactly as they were, all inside one transaction. An earlier release refused to do
+this at all and told you to get Plex to create the row, which needs Plex Pass and
+so never happened on most servers. The full explanation, with the measurements
 behind it, is in [plex-database.md](plex-database.md).
 
-Nothing else is affected. If your server already has the tag, this never comes
-up: `taggings` and `media_parts`, the tables this tool does write to, carry no
+Nothing else is affected. If your server already has the tag, this never comes up:
+`taggings` and `media_parts`, the tables this tool does write to, carry no
 triggers.
 
 ## Everything is skipped as a PAL speed-up
@@ -90,7 +97,7 @@ which puts them back.
 ## Markers moved or look wrong
 
 - **A few seconds out**: mostly a cut difference. Check that lookups are being
-  made with the file length (`plex-sync plan` reports the source of each
+  made with the file length (`plex-sync preview` reports the source of each
   marker), and that the file has not been replaced since.
 - **Minutes out**: usually a PAL speed-up, or an episode-numbering mismatch. A
   show that Plex numbers differently from TMDb (common with anime and

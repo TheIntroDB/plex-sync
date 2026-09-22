@@ -43,9 +43,10 @@ finds its values identical to what Plex had stored, byte for byte, across tens
 of thousands of rows.
 
 Every tag must already exist in `tags` with `tag_type = 12`. A database that has
-never had a marker does not have that tag row, and markers cannot be created
-until it does. See "Why the marker tag cannot be created from outside Plex"
-below for why this tool refuses rather than making one.
+never had a marker does not have that tag row, and nothing can be written until
+it does. This tool creates it on request — the `setup` command, or the marker tag
+button on the interface's Settings screen. See "Why the marker tag can be created
+after all" below.
 
 ### `media_parts.extra_data`
 
@@ -132,12 +133,12 @@ while people are streaming. The rules below are not optional.
   `extra_data` replacement is recorded before it happens, so undo can restore
   the previous bytes. Undo replays the journal in reverse inside one transaction.
 
-## Why the marker tag cannot be created from outside Plex
+## Why the marker tag can be created after all
 
 Marker rows hang off a `tags` row with `tag_type = 12`, and Plex only creates
 that row when it writes a marker of its own, which needs Plex Pass. On a server
-without Plex Pass it never appears, so a tool like this one is the only thing
-that would ever create it. It cannot, and neither can any other tool:
+without Plex Pass it never appears, so this tool is the only thing that would ever
+create it. The first release concluded that it could not, and refused instead:
 
 ```
 CREATE VIRTUAL TABLE fts4_tag_titles_icu USING fts4(
@@ -160,10 +161,39 @@ Measured, not theorised:
 | the system `sqlite3` command | `unknown tokenizer: collating` |
 
 A CGO build with FTS4 compiled in would fail the same way, because FTS4 is not
-the missing part: the tokenizer is. So the row has to come from Plex, and the
-tool says so instead of pretending otherwise. Nothing else is affected: `taggings`
-and `media_parts` carry no triggers at all, and the FTS tables are on
-`metadata_items` and `tags` only.
+the missing part: the tokenizer is.
+
+**What was wrong was the conclusion, not the measurement.** A plain `INSERT` is
+impossible. `DROP TRIGGER` is not, because dropping a trigger does not require its
+body to be prepared. So the row is written by taking the triggers off the table,
+inserting, and putting them back:
+
+1. read each trigger's `sql` out of `sqlite_master`, so that what goes back is
+   exactly what Plex put there rather than a copy of it kept in this program
+2. `DROP TRIGGER` for each of the four
+3. `INSERT INTO tags (id, tag_type, tag, created_at, updated_at) VALUES (...)`
+4. recreate each trigger from the SQL read in step 1
+5. count the triggers on `tags`, and refuse to commit when the count is not what
+   it was
+
+All five steps happen in one transaction, and SQLite's DDL is transactional, so an
+interruption anywhere rolls the schema back with the data: there is no window in
+which the database exists without its triggers. This is `plexdb.withoutTagTriggers`.
+The journal's `tag_insert` operation uses the same sequence in reverse when undo
+removes the row, because a `DELETE` fires the before-delete and after-delete
+triggers and meets the same problem from the other side.
+
+The one visible cost is that the FTS index does not gain the new row, since
+filling it needs the same tokenizer, so Plex's full-text search will not match the
+new tag's name. Markers are resolved by tag id and not by search, so nothing this
+tool does depends on it. `taggings` and `media_parts`, the tables markers are
+written to, carry no triggers at all.
+
+An earlier version of this section said the row had to come from Plex and that no
+other tool could make one. That was wrong: it is what stopped this tool writing
+anything on a server without Plex Pass. The row is made by the `setup` command, or
+by the marker tag button on the interface's Settings screen, after the same backup
+and with the same undo journal as any other write.
 
 ## Where the files live
 
@@ -194,4 +224,4 @@ Three ways to point at it yourself, in increasing precedence:
 When Plex re-analyses a season it clears custom markers. There is no event for
 this and nothing to subscribe to, so the tool detects it after the fact: the
 ledger knows what it wrote, and a run that finds those markers missing treats it
-as a re-apply rather than a first add. That is the `reapply` reason in a plan.
+as a re-apply rather than a first add. That is the `reapply` reason in a preview.

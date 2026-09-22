@@ -227,7 +227,7 @@ before it does, split the work with a plan file:
 
 ```bash
 # On the host, where Plex is reachable:
-plex-sync plan --save /mnt/cache/appdata/plex-sync/plan.json
+plex-sync preview --save /mnt/cache/appdata/plex-sync/preview.json
 
 # In the container, with no route to Plex at all:
 docker run --rm \
@@ -235,7 +235,7 @@ docker run --rm \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
   -e PLEX_DB=/db/com.plexapp.plugins.library.db \
   -e PLEX_URL=http://unreachable \
-  plex-sync:latest apply --plan /state/plan.json --yes --plex-stopped
+  plex-sync:latest apply --preview /state/preview.json --yes --plex-stopped
 ```
 
 `--plex-stopped` is honest here in a way it is not elsewhere: nothing else is
@@ -248,9 +248,9 @@ no longer looks the way the plan assumed is skipped. Applying the same plan
 twice writes the second time nothing, which is what makes this safe on a timer:
 
 ```
-$ docker run ... apply --plan /state/plan.json --yes --plex-stopped
+$ docker run ... apply --preview /state/preview.json --yes --plex-stopped
 Wrote 2 marker(s) across 1 item(s), removed 0, skipped 0.
-$ docker run ... apply --plan /state/plan.json --yes --plex-stopped
+$ docker run ... apply --preview /state/preview.json --yes --plex-stopped
 Wrote 0 marker(s) across 0 item(s), removed 0, skipped 1.
 ```
 

@@ -191,7 +191,7 @@ func newApplyCmd(g *globals) *cobra.Command {
 	var planPath string
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Write the planned markers into the Plex database",
+		Short: "Write the markers into the Plex database",
 		Long: strings.TrimSpace(`
 Plans and then writes. Requires --yes: without it the plan is printed and
 nothing is written.
@@ -279,7 +279,7 @@ func newSyncCmd(g *globals) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Inventory, fetch, plan and apply: the scheduled entry point",
+		Short: "Inventory, fetch and write: the scheduled entry point",
 		Long: strings.TrimSpace(`
 The command to put in cron. It plans and, with --yes, applies in the same run.
 

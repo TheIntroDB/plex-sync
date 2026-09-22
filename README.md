@@ -11,6 +11,31 @@ a scriptable command line. There is no web interface and no browser involved.
 
 ---
 
+## Quickstart
+
+Installed it? Two commands, with Plex stopped:
+
+```bash
+plex-sync setup            # one-time: checks everything, and makes the marker tag
+plex-sync sync --yes       # fetch what TheIntroDB has and write it into Plex
+```
+
+`setup` reports what it found, creates the marker tag if your library has never
+held a marker, and prints the crontab line to keep running afterwards. It writes
+nothing without the same backup and undo journal as any other run, and
+`--dry-run` reports without writing anything at all.
+
+If Plex is running, add `--live` to write while it does, as long as nothing is
+being streamed. Every write is reversible:
+
+```bash
+plex-sync preview --limit 20     # see what a run would change, touching nothing
+plex-sync undo latest --yes      # put back what the last run wrote
+plex-sync tui                    # or do all of this in the terminal interface
+```
+
+---
+
 ## What it does
 
 Plex detects intros by fingerprinting episodes, which is slow, and it can only
@@ -50,12 +75,13 @@ A token is required, and is read from the machine when you do not supply one:
 `.LocalAdminToken` on a modern Plex install, `Preferences.xml` on the Linux and
 Windows distributions, and the preferences plist on older macOS installs.
 
-**One caveat about Plex Pass.** Markers hang off a tag row that only Plex
-creates, and Plex only creates it when it writes a marker of its own, which is a
-Plex Pass feature. On a server whose database has never held a marker there is
-nothing to hang new markers off, and that row cannot be created from outside Plex
-(see [docs/plex-database.md](docs/plex-database.md)). A server that already has
-one marker, from Plex itself or from another tool, is fine.
+**One thing to know about the marker tag.** Markers hang off a tag row that Plex
+creates the first time it writes a marker of its own, which needs Plex Pass, so a
+server without it has never made one. `plex-sync setup` creates that row, or you
+can press the marker tag button on the Settings screen of the interface; either
+way it is one row, written after a backup, and `undo latest` removes it again.
+Nothing else about Plex's database is touched. A server that already has a marker,
+from Plex or from another tool, needs no setup at all.
 
 An API key is optional. With one, the daily allowance is higher and your own
 pending submissions are included in what you get back.
@@ -148,7 +174,7 @@ server, or if you would rather decide what changes before it happens:
 
 ```bash
 # Wherever Plex is reachable: decide, and record the decision.
-plex-sync plan --save /mnt/cache/appdata/plex-sync/plan.json
+plex-sync preview --save /mnt/cache/appdata/plex-sync/preview.json
 
 # The container: write exactly that, and nothing else.
 docker run --rm \
@@ -156,7 +182,7 @@ docker run --rm \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
   -e PLEX_URL=http://unreachable \
   -e PLEX_DB=/db/com.plexapp.plugins.library.db \
-  theintrodb/plex-sync:latest apply --plan /state/plan.json --yes --plex-stopped
+  theintrodb/plex-sync:latest apply --preview /state/preview.json --yes --plex-stopped
 ```
 
 Neither half is trusted on its own: applying a saved plan checks every change
@@ -204,14 +230,14 @@ The same work is available as commands, for cron and scripts:
 
 ```bash
 plex-sync config check          # validate configuration and reach both services
-plex-sync library               # list matched items and the ids used for lookups
-plex-sync plan --show "the last of us"   # what a run would change, for one show
-plex-sync plan --save plan.json  # ...and save it, to write later without Plex
-plex-sync apply --yes           # write the markers (--dry-run to preview)
-plex-sync apply --plan plan.json --yes   # write a saved plan, without contacting Plex
+plex-sync library               # list items and the names Plex uses, for --show
+plex-sync preview --show "the last of us"   # what a run would change, for one show
+plex-sync preview --save preview.json  # ...and save it, to write later without Plex
+plex-sync apply --yes           # write the markers (--dry-run to see them first)
+plex-sync apply --preview preview.json --yes   # write a saved preview, without Plex
 plex-sync undo latest --yes     # revert the most recent run
 plex-sync status                # ledger, quota and recent runs
-plex-sync sync --yes            # inventory, fetch, plan and apply, once
+plex-sync sync --yes            # inventory, fetch and write, once
 plex-sync schedule --yes        # the same, on a schedule the process holds itself
 plex-sync api serve             # local JSON API, OpenAPI schema at /openapi.json
 ```
@@ -327,7 +353,7 @@ cannot be told apart from a speed-up, so they are left alone.
 ## Troubleshooting
 
 **No markers appear.** Markers are written by a run, not on playback. Check
-`plex-sync plan` to see what a run intends to do, and that your items have a
+`plex-sync preview` to see what a run intends to do, and that your items have a
 TMDb or IMDb id (`plex-sync library`).
 
 **"cannot confirm whether Plex is running".** Plex's process was not visible and
