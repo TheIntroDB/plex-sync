@@ -205,6 +205,36 @@ SQLite can parse, creates the marker tag Plex would have created, and runs the
 live tests in `internal/plexdb`. The source database is never opened for
 writing. See the comments at the top of the script for why each step is needed.
 
+### Plex Pass, and the marker tag
+
+Both matter when something looks wrong, and neither is obvious from the code.
+
+**Plex Pass is required for the feature to be visible at all.** Markers can be
+written to the database without one, and Plex's API serves them, which is why this
+was believed to work and did not: Plex's *clients* only offer to skip when the
+server owner and the player's account both have an active Pass. A report of
+"nothing happens" on a server without a Pass is not a bug to chase.
+
+**The marker tag is a first-run problem.** `taggings` rows hang off a `tags` row
+with `tag_type = 12`, which Plex only creates when it writes a marker of its own,
+so a library that has never held one has nowhere to put them and a run stops and
+says so. `--force-create-initial-tag` on `sync`, `apply` or `setup` makes the row.
+It is a flag and not a setting on purpose: it writes to Plex's schema, and a
+library that has held one marker already has the tag. The same sequence is in
+`plexdb.withoutTagTriggers`, which is what makes the write possible at all — the
+table's FTS4 triggers cannot be prepared outside Plex, so they come off for the
+duration and go back from the SQL read out of the database.
+
+`scripts/live-e2e.sh` creates that tag so the live tests have somewhere to write,
+which is why it mentions it.
+
+### Skipping without Plex Pass
+
+[PlexAutoSkip](https://github.com/mdhiggins/PlexAutoSkip) takes the other approach:
+instead of relying on Plex's own skip button it watches playback and seeks past the
+segment itself. Untested here, and its custom marker files are its own format, but
+it is what to point someone at who does not have a Pass.
+
 Live TheIntroDB checks work the same way:
 
 ```bash

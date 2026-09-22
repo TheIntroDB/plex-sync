@@ -91,10 +91,10 @@ of thousands of rows.
 Every tag must already exist in `tags` with `tag_type = 12`. That applies to this
 `taggings` copy, not to the marker table above: Plex 1.43 ignores these rows
 entirely, so on such a server the tag is not needed for markers to appear. A
-database that has never had a marker does not have the tag row, and this tool
-creates it on request — the `setup` command, or the marker tag button on the
-interface's Settings screen. See "Why the marker tag can be created after all"
-below.
+database that has never had a marker does not have the tag row, and a marker row
+written there has nothing to hang off until it does. `--force-create-initial-tag`
+makes it, once, on the run that needs it. See "Why the marker tag can be created
+after all" below.
 
 ### `media_parts.extra_data`
 
@@ -262,9 +262,12 @@ written to, carry no triggers at all.
 
 An earlier version of this section said the row had to come from Plex and that no
 other tool could make one. That was wrong: it is what stopped this tool writing
-anything on a server without Plex Pass. The row is made by the `setup` command, or
-by the marker tag button on the interface's Settings screen, after the same backup
-and with the same undo journal as any other write.
+anything into a library that has never held a marker.
+
+The row is made by `--force-create-initial-tag`, after the same backup and with the
+same undo journal as any other write. It is a flag rather than a setting or a
+button because it is a first-run and diagnostic step: a library that has held one
+marker already has the tag, and nothing after that needs it.
 
 ## Where the files live
 

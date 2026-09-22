@@ -47,7 +47,15 @@ tool does. Measured on a server with `subscriptionActive="0"`: a row written int
 `metadata_item_setting_markers` comes straight back from
 `GET /library/metadata/{id}?includeMarkers=1` as an `intro`, and a row written into
 `taggings` never does. Plex Pass gates Plex's own detection and its marker API, not
-what it will read out of its own database.
+what Plex will read out of its own database.
+
+That distinction is real and it is also not the one that decides whether the
+feature works, which is worth being clear about because it cost this project a
+week of looking in the wrong place. Plex's *clients* only offer skipping with an
+active Plex Pass, on the server owner's account and on the account the player is
+signed in as. So a marker can be in the database, be served by the API, and still
+produce no button — which is what a server without a Pass looks like, and what
+this tool looked like when it was broken in a different way entirely.
 
 Everything that can be done over HTTP is done over HTTP. Only the marker write,
 the backup and the undo touch the file.

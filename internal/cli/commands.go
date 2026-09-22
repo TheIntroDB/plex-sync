@@ -38,7 +38,7 @@ func addRunFlags(cmd *cobra.Command, opts *sync.Options) {
 	// it touches Plex's schema, current versions do not need it, and nobody
 	// should find it by reading a configuration file.
 	flags.BoolVar(&opts.ForceCreateInitialTag, "force-create-initial-tag", false,
-		"make the marker tag older Plex versions need, when the database has none (debug)")
+		"make the marker tag a library with no markers needs, so marker rows have somewhere to go (debug)")
 }
 
 // --- library ---------------------------------------------------------------

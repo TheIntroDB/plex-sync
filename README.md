@@ -16,13 +16,12 @@ a scriptable command line. There is no web interface and no browser involved.
 Installed it? Two commands, with Plex stopped:
 
 ```bash
-plex-sync setup            # one-time: checks everything, and makes the marker tag
+plex-sync setup            # one-time: says what it found, and prints the schedule
 plex-sync sync --yes       # fetch what TheIntroDB has and write it into Plex
 ```
 
-`setup` reports what it found, creates the marker tag older Plex versions need if
-your library has never held a marker, and prints the crontab line to keep running
-afterwards. It writes
+`setup` reports what it found and prints the crontab line to keep running
+afterwards. It writes nothing unless you ask it to. It writes
 nothing without the same backup and undo journal as any other run, and
 `--dry-run` reports without writing anything at all.
 
@@ -64,10 +63,14 @@ Intro and Skip Credits buttons appear without any local analysis.
 - Read and write access to Plex's database file
   (`com.plexapp.plugins.library.db`). Writing markers requires it, because Plex's
   own marker API needs Plex Pass.
-- **No Plex Pass is needed.** Plex Pass gates Plex's own detection and its marker
-  API, both of which answer 400 without it, but a marker written into the database
-  is served regardless: that was measured on a server reporting
-  `subscriptionActive="0"`.
+- **An active Plex Pass, or nothing will show.** Plex only offers skipping with a
+  Pass, so both accounts need one: the **server owner** who administers the
+  library, and **the account the player app is signed in as** — their own
+  subscription, or membership of a Plex Home whose admin has one, which covers
+  Managed Users. This holds even when the markers are already in the database,
+  which is the confusing part: the rows are there, Plex serves them, and the client
+  still shows no button. See [docs/troubleshooting.md](docs/troubleshooting.md) if
+  you have a Pass and the button is still missing.
 - **TMDb metadata is recommended** for accuracy. IMDb and Tvdb ids work as a
   fallback but are less exact for TV episodes.
 
@@ -80,13 +83,23 @@ A token is required, and is read from the machine when you do not supply one:
 `.LocalAdminToken` on a modern Plex install, `Preferences.xml` on the Linux and
 Windows distributions, and the preferences plist on older macOS installs.
 
-**One thing to know about the marker tag.** Older Plex versions keep markers in a
-`taggings` table, and those rows hang off a tag row Plex only creates when it
-writes a marker of its own, which needs Plex Pass. `plex-sync setup` creates that
-row, or you can press the marker tag button on the Settings screen; either way it
-is one row, written after a backup, and `undo latest` removes it again. Current
-Plex versions read markers from a table of their own instead, so on those the
-setup step only matters for the older-version copy.
+**One flag worth knowing if a first run refuses.** Markers are written into a
+table whose rows hang off a tag Plex only creates when it writes a marker of its
+own, so a library that has never held one has nowhere for them to go. When that is
+the case the run says so and stops; `--force-create-initial-tag` makes the row,
+behind the usual backup and undo journal, and it is a one-time debug step rather
+than part of a normal run. It is not a setting, and it is not in the interface,
+because almost nobody needs it: any library that has held a single marker already
+has the tag.
+
+**If you do not have Plex Pass**, this tool can still put markers in the database
+and Plex will serve them, but no client will offer to skip anything, so there is
+little point running it for that. What people use instead is
+[PlexAutoSkip](https://github.com/mdhiggins/PlexAutoSkip), a Python script that
+watches playback and seeks past a segment itself rather than relying on Plex's own
+skip button. It is a different approach to the same problem and this tool does not
+talk to it — its custom marker files are its own format — but it is the answer for
+a server without a Pass. We have not tested it.
 
 An API key is optional. With one, the daily allowance is higher and your own
 pending submissions are included in what you get back.

@@ -23,28 +23,30 @@ import (
 // waiting for a library that had never held a marker, and said so with a message
 // about tag_type 12.
 //
-// So: one command that checks the configuration, makes the marker tag if the
-// library needs one, and prints the schedule and the next command to run. It
-// writes nothing without the same confirmation, backup and journal as any other
-// run, and --dry-run reports without touching anything.
+// So: one command that checks the configuration, says whether the library can be
+// written to, and prints the schedule and the next command to run. It writes
+// nothing unless asked -- the one write it can make is the marker tag, and that
+// needs --force-create-initial-tag.
 func newSetupCmd(g *globals) *cobra.Command {
 	opts := sync.Options{}
 	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "One-time setup: check the configuration, then make the library writable",
+		Short: "One-time setup: check the configuration and report what the library needs",
 		Long: strings.TrimSpace(`
-Run this once after installing, with Plex stopped.
+Run this once after installing.
 
-It checks the configuration and both services, then looks for the marker tag in
-the Plex database. Plex creates that row the first time it writes a marker
-itself, which needs Plex Pass, so on a server without it the row is never there
-and markers have nothing to attach to. This makes the row, with the same backup
-and undo journal as any other write, and prints the schedule to use afterwards.
+It checks the configuration and both services, then says whether the Plex database
+has the marker tag its marker rows hang off -- Plex creates that row the first time
+it writes a marker of its own, so a library that has never held one does not have
+it, and a write run stops and says so. This reports that rather than acting on it:
+making the row is a schema write, so it happens only with
+--force-create-initial-tag, and then with the same backup and undo journal as any
+other write.
 
-Nothing is written unless the safety checks a normal run uses pass. Use
---dry-run to see the report without the write, and ` + "`undo latest`" + ` to reverse it.`),
+It also prints the schedule to use afterwards. Nothing else is written. Use
+--dry-run for the report alone, and ` + "`undo latest`" + ` to reverse a tag this made.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -169,7 +171,7 @@ Nothing is written unless the safety checks a normal run uses pass. Use
 	// The one thing here that touches Plex's schema, and only older versions
 	// need it: a debug and migration flag rather than a step to walk through.
 	cmd.Flags().BoolVar(&opts.ForceCreateInitialTag, "force-create-initial-tag", false,
-		"make the marker tag older Plex versions need, when the database has none (debug)")
+		"make the marker tag a library with no markers needs, so marker rows have somewhere to go (debug)")
 	cmd.Flags().BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
 	cmd.Flags().BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	cmd.Flags().BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")
