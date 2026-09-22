@@ -166,11 +166,14 @@ func (d *DB) MarkerTagIDOrCreate(ctx context.Context, j *Journal) (int64, error)
 	}
 
 	now := time.Now().UTC().Unix()
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO tags(id, tag_type, tag, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		id, TagTypeMarker, MarkerTagName, now, now,
-	); err != nil {
-		return 0, missingFTSModuleError(err, d.path)
+	err = withoutTagTriggers(ctx, tx, func() error {
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO tags(id, tag_type, tag, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			id, TagTypeMarker, MarkerTagName, now, now)
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("plexdb: create the marker tag: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("plexdb: create the marker tag: %w", err)
@@ -178,40 +181,108 @@ func (d *DB) MarkerTagIDOrCreate(ctx context.Context, j *Journal) (int64, error)
 	return id, nil
 }
 
-// missingFTSModuleError explains the one write this tool cannot make, and why
-// there is no workaround to offer.
+// withoutTagTriggers runs fn with the FTS triggers on tags dropped, and puts
+// them back exactly as they were afterwards.
 //
-// Plex's tags table carries an FTS4 trigger, and that trigger's table is created
-// with Plex's own ICU tokenizer:
+// Plex's tags table carries four FTS4 triggers, and their bodies name a table
+// created with Plex's own ICU tokenizer:
 //
 //	CREATE VIRTUAL TABLE fts4_tag_titles_icu USING fts4(tag, tokenize=collating '...')
 //
-// Any write to tags has to prepare the trigger body, which means opening that
-// table, which means resolving a tokenizer that only the SQLite built into Plex
-// registers. So the statement fails before its WHEN clause is ever considered,
-// and it fails for every SQLite outside Plex: this program's pure-Go build
-// reports "no such module: fts4", and the system sqlite3 command reports
-// "unknown tokenizer: collating". Switching to a CGO build with FTS4 compiled in
-// would not help either.
+// Any statement touching tags has to prepare those trigger bodies, which means
+// opening that table, which means resolving a tokenizer that only the SQLite
+// built into Plex registers. So a plain INSERT into tags cannot even be
+// prepared: this program reports "no such module: fts4" and the system sqlite3
+// says "unknown tokenizer: collating". That is a real obstacle, and it is also
+// not the end of the story, which an earlier version of this file concluded it
+// was.
 //
-// The row therefore has to come from Plex, which creates it the first time it
-// writes a marker of its own. That is a Plex Pass feature. Everything else this
-// tool does goes to taggings and media_parts, which carry no triggers at all.
-func missingFTSModuleError(err error, dbPath string) error {
-	message := err.Error()
-	if !strings.Contains(message, "no such module") &&
-		!strings.Contains(message, "unknown tokenizer") {
-		return fmt.Errorf("plexdb: create the marker tag: %w", err)
+// Dropping a trigger does not require preparing its body, so the triggers are
+// dropped for the duration of the write and re-created from the SQL read out of
+// this same database. Nothing is invented and nothing is left behind:
+//
+//   - the SQL comes from sqlite_master, not from a copy of it in this file, so
+//     whatever Plex's own version of those triggers is, that is what goes back
+//   - it all happens in the caller's transaction, and SQLite's DDL is
+//     transactional, so a failure anywhere rolls the schema back with the data
+//   - the trigger count is checked afterwards, and a mismatch is an error rather
+//     than something to discover later
+//
+// The one visible cost is that the FTS index does not gain the new row: filling
+// it needs the same tokenizer, so Plex's full-text search will not match the new
+// tag's name. Markers are resolved by tag id and not by search, so nothing about
+// this tool's purpose depends on it.
+func withoutTagTriggers(ctx context.Context, tx *sql.Tx, fn func() error) error {
+	type trigger struct{ name, sql string }
+
+	rows, err := tx.QueryContext(ctx,
+		`SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tags'`)
+	if err != nil {
+		return fmt.Errorf("read the tags triggers: %w", err)
 	}
-	return fmt.Errorf(
-		"plexdb: cannot create the marker tag in %s, and no other tool can either.\n\n"+
-			"Plex's tags table has an FTS4 trigger whose table uses Plex's own ICU tokenizer "+
-			"(\"tokenize=collating\"), which only the SQLite inside Plex implements, so any write "+
-			"to that table fails before the trigger's condition is even considered. The system "+
-			"sqlite3 command fails the same way, and so would a build with FTS4 compiled in.\n\n"+
-			"Let Plex create the row: it makes one the first time it writes a marker of its own, "+
-			"which needs Plex Pass. After that, this tool never touches tags again and everything "+
-			"works. Original error: %v", dbPath, err)
+	var triggers []trigger
+	for rows.Next() {
+		var t trigger
+		if err := rows.Scan(&t.name, &t.sql); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("read the tags triggers: %w", err)
+		}
+		triggers = append(triggers, t)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("read the tags triggers: %w", err)
+	}
+	_ = rows.Close()
+
+	for _, t := range triggers {
+		if !plainIdentifier(t.name) {
+			return fmt.Errorf("refusing to drop a trigger with an unexpected name: %q", t.name)
+		}
+		if _, err := tx.ExecContext(ctx, `DROP TRIGGER "`+t.name+`"`); err != nil {
+			return fmt.Errorf("drop %s: %w", t.name, err)
+		}
+	}
+
+	if err := fn(); err != nil {
+		// The caller's transaction rolls back, which takes the dropped triggers
+		// with it. Returning the original error keeps the cause visible.
+		return err
+	}
+
+	for _, t := range triggers {
+		if _, err := tx.ExecContext(ctx, t.sql); err != nil {
+			return fmt.Errorf("put %s back: %w", t.name, err)
+		}
+	}
+
+	var count int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tags'`).
+		Scan(&count); err != nil {
+		return fmt.Errorf("check the tags triggers: %w", err)
+	}
+	if count != len(triggers) {
+		return fmt.Errorf(
+			"the tags table has %d triggers and should have %d: refusing to commit", count, len(triggers))
+	}
+	return nil
+}
+
+// plainIdentifier reports whether a name is the sort of thing a trigger is
+// called. The names come from the database, but they end up inside a statement,
+// and a name that is not a plain identifier is a reason to stop rather than to
+// quote it and hope.
+func plainIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r != '_' && !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // MarkerTagID returns the marker tag Plex uses, when one exists.

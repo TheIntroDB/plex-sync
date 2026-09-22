@@ -3,6 +3,7 @@ package plexdb
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -188,7 +189,7 @@ func Undo(dbPath, journalPath string) (int, error) {
 }
 
 // undoOp reverses one journalled operation.
-func undoOp(ctx context.Context, tx querier, op map[string]any) error {
+func undoOp(ctx context.Context, tx *sql.Tx, op map[string]any) error {
 	name, _ := op["op"].(string)
 	ratingKey := rowInt(op, "rating_key")
 
@@ -244,11 +245,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 		// Restricted to the marker tag type, so a wrong id in a journal can
 		// never delete a tag that carries real metadata.
-		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM tags WHERE id = ? AND tag_type = ?`, id, TagTypeMarker); err != nil {
-			return fmt.Errorf("plexdb: undo tag_insert %d: %w", id, err)
-		}
-		return nil
+		//
+		// Deleting needs the same care as creating: the FTS triggers on tags
+		// cannot be prepared outside Plex, so they come off for the duration of
+		// the delete and go back exactly as they were.
+		return withoutTagTriggers(ctx, tx, func() error {
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM tags WHERE id = ? AND tag_type = ?`, id, TagTypeMarker); err != nil {
+				return fmt.Errorf("plexdb: undo tag_insert %d: %w", id, err)
+			}
+			return nil
+		})
 
 	case "extra":
 		partID := rowInt(op, "part_id")

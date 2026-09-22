@@ -36,6 +36,10 @@ type App struct {
 	// never needs the database, and on some installs it cannot be read at all.
 	plexDB     *plexdb.DB
 	plexDBPath string
+
+	// plexDBReadOnly records how the cached handle was opened, because asking
+	// for a writable one when the open one is read-only means reopening.
+	plexDBReadOnly bool
 }
 
 // Options controls how Open behaves.
@@ -110,9 +114,23 @@ func Open(cfg *config.Config, log *slog.Logger, opts Options) (*App, error) {
 
 // PlexDB opens the Plex database on first use and remembers the result, so a
 // failed open is reported once rather than on every call.
+//
+// Read-only is a property of the connection and cannot be changed afterwards, so
+// a handle opened for reading cannot serve a caller that means to write. One run
+// does ask for both: the survey reads markers with a read-only handle, and the
+// apply that follows writes with a writable one. Handing the read-only handle to
+// the writer is how a run ends up doing nothing at all while reporting success,
+// so a writable request reopens the database instead. That costs one reopen per
+// run and is the difference between the tool working and quietly not.
 func (a *App) PlexDB(readOnly bool) (*plexdb.DB, error) {
 	if a.plexDB != nil {
-		return a.plexDB, nil
+		if readOnly || !a.plexDBReadOnly {
+			return a.plexDB, nil
+		}
+		if err := a.plexDB.Close(); err != nil {
+			return nil, fmt.Errorf("close the read-only Plex database: %w", err)
+		}
+		a.plexDB = nil
 	}
 	path, err := a.Cfg.CheckDatabase()
 	if err != nil {
@@ -123,6 +141,7 @@ func (a *App) PlexDB(readOnly bool) (*plexdb.DB, error) {
 		return nil, fmt.Errorf("open Plex database %s: %w", path, err)
 	}
 	a.plexDB = db
+	a.plexDBReadOnly = readOnly
 	a.plexDBPath = path
 	return db, nil
 }
@@ -147,6 +166,7 @@ func (a *App) Close() error {
 			errs = append(errs, err)
 		}
 		a.plexDB = nil
+		a.plexDBReadOnly = false
 	}
 	if a.Ledger != nil {
 		if err := a.Ledger.Close(); err != nil {

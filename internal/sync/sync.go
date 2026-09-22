@@ -179,10 +179,13 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 	if dbErr == nil {
 		tagID, err = db.MarkerTagID()
 		if err != nil {
-			// A library that has never held a marker has no marker tag, and
-			// markers cannot be created until Plex makes one. That is not an
-			// error here: the plan simply finds nothing to preserve.
-			r.app.Log.Warn("no marker tag in the Plex database yet", "error", err)
+			// A library that has never held a marker has no marker tag. That is
+			// not an error while planning: the survey says so, and the apply
+			// either creates the row or explains how to have it created. The
+			// read-only handle stays open, because reading markers for existing
+			// items still works from it.
+			r.app.Log.Warn("no marker tag in the Plex database yet, so nothing is preserved as already marked",
+				"error", err)
 			db = nil
 		}
 	} else {
@@ -341,11 +344,13 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 		if !cfg.Apply.CreateMissingMarkerTag {
 			_ = journal.Close()
 			return fmt.Errorf(
-				"the Plex database has no marker tag yet, so markers cannot be created. "+
-					"Plex only creates that row when it writes a marker itself, which needs "+
-					"Plex Pass, so on a server without it the row has to be made: set "+
-					"apply.create_missing_marker_tag = true (or PLEX_SYNC_CREATE_MARKER_TAG=1) "+
-					"to let this tool create it: %w", err)
+				"the Plex database has no marker tag, so a marker has nothing to attach to. "+
+					"Plex makes that row the first time it writes a marker itself, which needs "+
+					"Plex Pass, so on a server without it this tool makes the row instead: run "+
+					"'plex-sync setup' to do it as a one-time step, or set "+
+					"apply.create_missing_marker_tag = true (PLEX_SYNC_CREATE_MARKER_TAG=1) to "+
+					"let every run do it. The row is created with the same backup and undo "+
+					"journal as any other write: %w", err)
 		}
 		tagID, err = db.MarkerTagIDOrCreate(ctx, journal)
 		if err != nil {
