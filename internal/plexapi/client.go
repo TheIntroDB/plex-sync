@@ -8,8 +8,7 @@
 // Every request goes through internal/httpclient (Fiber's client underneath),
 // so the whole tool shares one connection pool and one timeout policy. A
 // non-2xx status is not an error at this layer: the methods decide what a 404
-// from an endpoint means, and the one case that matters is the markers
-// endpoint on an older Plex, where 400/404 means "fall back to the database".
+// from an endpoint means.
 package plexapi
 
 import (
@@ -279,9 +278,6 @@ func (c *Client) sectionItems(ctx context.Context, key, metadataType int, kind m
 }
 
 // Chapters returns the chapters Plex extracted from an item's file.
-//
-// Older Plex versions answer 404 for an item with no chapter data, which is a
-// normal outcome here and yields an empty slice.
 func (c *Client) Chapters(ctx context.Context, ratingKey int) ([]model.Chapter, error) {
 	path := "/library/metadata/" + strconv.Itoa(ratingKey)
 	query := url.Values{"includeChapters": {"1"}}

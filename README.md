@@ -1,4 +1,4 @@
-# TheIntroDB Plex Integration
+# TheIntroDB Plex Sync
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/logo-banner.png">
@@ -9,30 +9,23 @@
 every file in your library. It is a single binary with a terminal interface and
 a scriptable command line. There is no web interface and no browser involved.
 
+Plex Pass is still required. The markers are never read to show skip buttons unless the server owner has a valid license and the feature enabled. See other requirements below.
+
 ---
 
-## Quickstart
-
-Installed it? Two commands, with Plex stopped:
-
-```bash
-plex-sync setup            # one-time: says what it found, and prints the schedule
-plex-sync sync --yes       # fetch what TheIntroDB has and write it into Plex
-```
-
-`setup` reports what it found and prints the crontab line to keep running
-afterwards. It writes nothing unless you ask it to. It writes
-nothing without the same backup and undo journal as any other run, and
-`--dry-run` reports without writing anything at all.
-
-If Plex is running, add `--live` to write while it does, as long as nothing is
-being streamed. Every write is reversible:
-
-```bash
-plex-sync preview --limit 20     # see what a run would change, touching nothing
-plex-sync undo latest --yes      # put back what the last run wrote
-plex-sync tui                    # or do all of this in the terminal interface
-```
+## TOC
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Usage](#usage)
+- [Scheduling](#scheduling)
+- [Configuration](#configuration)
+- [Sources](#sources)
+- [Safety](#safety)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [License](#license)
 
 ---
 
@@ -222,6 +215,31 @@ go install github.com/TheIntroDB/plex-sync@latest
 
 The binary has no runtime dependencies and needs no CGO, so it cross-compiles to
 Linux, macOS and Windows on both amd64 and arm64.
+
+---
+
+## Quickstart
+
+Installed it? Two commands, with Plex stopped:
+
+```bash
+plex-sync setup            # one-time: says what it found, and prints the schedule
+plex-sync sync --yes       # fetch what TheIntroDB has and write it into Plex
+```
+
+`setup` reports what it found and prints the crontab line to keep running
+afterwards. It writes nothing unless you ask it to. It writes
+nothing without the same backup and undo journal as any other run, and
+`--dry-run` reports without writing anything at all.
+
+If Plex is running, add `--live` to write while it does, as long as nothing is
+being streamed. Every write is reversible:
+
+```bash
+plex-sync preview --limit 20     # see what a run would change, touching nothing
+plex-sync undo latest --yes      # put back what the last run wrote
+plex-sync tui                    # or do all of this in the terminal interface
+```
 
 ---
 

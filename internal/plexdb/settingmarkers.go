@@ -34,8 +34,7 @@ const (
 )
 
 // markerTable is the table Plex keeps its own markers in, from schema revision
-// 202309200911. Older servers do not have it, which is why everything here is
-// conditional: the taggings write stays for them.
+// 202309200911.
 const markerTable = "metadata_item_setting_markers"
 
 // markerSource marks the rows this tool wrote, so that a marker Plex detected

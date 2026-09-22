@@ -286,10 +286,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)`,
 		}
 	}
 
-	// Plex 1.43 does not read markers out of taggings; it has a table of its own
-	// and that is what its API serves. The same markers go there too, when this
-	// Plex has that table. A server older than it reads taggings and nothing
-	// here runs, which is what keeps one writer working for both.
 	if _, err := d.writeSettingMarkers(ctx, tx, ratingKey, desiredMarkers(plan),
 		replace, j); err != nil {
 		return err

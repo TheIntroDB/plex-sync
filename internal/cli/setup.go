@@ -98,7 +98,7 @@ It also prints the schedule to use afterwards. Nothing else is written. Use
 
 			// --- the marker tag ----------------------------------------------
 			//
-			// Only older Plex versions need it: their marker rows hang off this
+			// Only fresh Plex installs or non Plex Pass users use this: their marker rows hang off this
 			// tag, and current versions read a table of their own. So this is
 			// reported rather than acted on, and made only when asked for.
 			fmt.Fprintln(out)
@@ -168,8 +168,7 @@ It also prints the schedule to use afterwards. Nothing else is written. Use
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would happen without writing")
-	// The one thing here that touches Plex's schema, and only older versions
-	// need it: a debug and migration flag rather than a step to walk through.
+	// The one thing here that touches Plex's schema: a debug and migration flag rather than a step to walk through.
 	cmd.Flags().BoolVar(&opts.ForceCreateInitialTag, "force-create-initial-tag", false,
 		"make the marker tag a library with no markers needs, so marker rows have somewhere to go (debug)")
 	cmd.Flags().BoolVar(&opts.Live, "live", false, "allow writing while Plex runs and nothing is playing")
