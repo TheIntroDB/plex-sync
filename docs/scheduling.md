@@ -19,6 +19,37 @@ writes without `--yes`, and nothing writes while someone is watching something.
 Every run writes a line per item to the ledger and a log line to standard error,
 so `journalctl`, the Docker log or a file all work as a record of what happened.
 
+## Large libraries, and the daily allowance
+
+TheIntroDB allows 1000 requests per UTC day with an API key and 500 without one,
+so a library of tens of thousands of items is not scanned in one night. That is
+expected, and the schedule is how it is meant to be worked through:
+
+- An item that has been looked up is recorded, and a recorded item is answered
+  from the ledger afterwards without a request. Nothing expires that record, so
+  an item is asked about once rather than once every couple of weeks.
+- A run spends what is left of the day's allowance on items it has never seen,
+  then stops. It logs how many items are still to scan and exits **zero**: the
+  allowance being spent is a stopping point, not a failure, and a nightly timer
+  that reported an error every night would be a timer nobody reads.
+- The next run continues from the same place, because every scan is recorded.
+
+A schedule therefore converges: a 40,000-item library at 1000 requests a day
+gets through in about 40 days, writing the markers it has data for each night.
+Raising `theintrodb.daily_budget` beyond the allowance does not help — the
+server refuses the request either way; the budget is what stops the client
+before the refusal.
+
+To ask about something again, name it. Nothing is re-scanned on a timer:
+
+```bash
+plex-sync sync --yes --rescan tmdb:1399:1:1    # one item, by lookup key
+plex-sync sync --yes --rescan-all              # everything; a full library of requests
+```
+
+`plex-sync status` reports how many items have been scanned, split by whether
+TheIntroDB had data, which is the progress figure for a library this size.
+
 ## The built-in schedule
 
 ```bash
@@ -201,8 +232,10 @@ task forever.
 30 7 * * *  PLEX_SYNC_STATE_DIR=/var/lib/plex-sync /usr/local/bin/plex-sync schedule --once --yes >>/var/log/plex-sync.log 2>&1
 ```
 
-A run that finds nothing to do is not an error. One that fails exits non-zero
-and logs why; cron will mail that to you if the machine can send mail.
+A run that finds nothing to do is not an error. One that has simply used up the
+day's request allowance exits zero as well — see "Large libraries" above — while
+one that genuinely fails exits non-zero and logs why; cron will mail that to you
+if the machine can send mail.
 
 ## Docker
 
