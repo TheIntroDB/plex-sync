@@ -128,6 +128,10 @@ func (m *Model) statusScreen() string {
 	if m.stats != nil {
 		b.WriteString(fmt.Sprintf("  all time      %d request(s), %d lookup(s), %d hit(s)\n",
 			m.stats.RequestsTotal, m.stats.Lookups, m.stats.LookupHits))
+		if m.stats.Scanned > 0 {
+			b.WriteString(fmt.Sprintf("  scanned       %d item(s) (%d with data, %d without)\n",
+				m.stats.Scanned, m.stats.ScannedWithData, m.stats.ScannedNoData))
+		}
 	}
 
 	b.WriteString("\n" + styleTitle.Render("Markers written") + "\n")
@@ -222,25 +226,52 @@ func (m *Model) planScreen() string {
 	}
 	res := m.result
 	work := res.Plan.Work()
+	selected := len(res.Plan.SelectedWork())
+	rescans := res.Plan.Selection.RescanKeys()
 
 	var b strings.Builder
 	b.WriteString(styleTitle.Render("Preview") + "\n")
-	b.WriteString(fmt.Sprintf("  examined %d item(s): %d with data, %d without, %d cached, %d lookup(s)\n",
-		res.Survey.Items, res.Survey.WithData, res.Survey.NoData, res.Survey.Cached, res.Survey.Lookups))
-	b.WriteString(fmt.Sprintf("  policy %s, %d item(s) to change\n\n",
-		res.Plan.Options.Policy, len(work)))
+	b.WriteString(fmt.Sprintf("  examined %d item(s): %d with data, %d without, %d already scanned, %d lookup(s)\n",
+		res.Survey.Items, res.Survey.WithData, res.Survey.NoData, res.Survey.Skipped, res.Survey.Lookups))
+	b.WriteString(fmt.Sprintf("  policy %s, %d item(s) to change, %d selected\n",
+		res.Plan.Options.Policy, len(work), selected))
+	if res.Survey.Paused {
+		b.WriteString("  " + styleWarn.Render(fmt.Sprintf(
+			"paused: the day's allowance was spent, %d item(s) still to scan; the next run continues here",
+			res.Survey.Remaining)) + "\n")
+	}
+	b.WriteString("\n")
 
 	if len(work) == 0 {
 		b.WriteString(styleGood.Render("  Nothing to do.") + "\n")
 	} else {
 		start, end := m.visible(len(work))
-		for _, item := range work[start:end] {
-			b.WriteString(fmt.Sprintf("  %-44s %-8s %s\n",
-				truncate(item.Item.Label(), 44), item.Reason, describeItem(item)))
+		for i := start; i < end; i++ {
+			item := work[i]
+
+			// The cursor is a marker rather than only a colour, so what is
+			// selected survives being read in a terminal without any.
+			cursor := "  "
+			if i == m.planCursor {
+				cursor = styleKey.Render("> ")
+			}
+			box := "[x]"
+			if !res.Plan.Selection.Selected(item.Item.RatingKey) {
+				box = "[ ]"
+			}
+			flag := ""
+			if key, ok := item.Item.LookupKey(); ok && rescans[key] {
+				flag = "  " + styleWarn.Render("[re-scan]")
+			}
+			b.WriteString(fmt.Sprintf("  %s%s %-42s %-8s %s%s\n",
+				cursor, box, truncate(item.Item.Label(), 42), item.Reason,
+				describeItem(item), flag))
 		}
 		if end < len(work) {
 			b.WriteString(styleDim.Render(fmt.Sprintf("  ... %d more\n", len(work)-end)))
 		}
+		b.WriteString("\n" + styleDim.Render(
+			"  space select   A all   N none   R re-scan (then p to ask again)") + "\n")
 	}
 
 	if len(res.Survey.SkipReasons) > 0 {
@@ -397,8 +428,10 @@ func (m *Model) confirmation() string {
 		work := 0
 		added := 0
 		if m.result != nil {
-			work = len(m.result.Plan.Work())
-			for _, item := range m.result.Plan.Work() {
+			// Only what is selected is written, so the confirmation counts
+			// what will actually happen rather than what the plan found.
+			work = len(m.result.Plan.SelectedWork())
+			for _, item := range m.result.Plan.SelectedWork() {
 				added += len(item.Add)
 			}
 		}
@@ -430,6 +463,9 @@ func (m *Model) footer() string {
 	keys := "1-5 screens   tab next   r refresh   l library   p preview   a write   u undo   q quit"
 	if m.screen == screenSettings {
 		keys = "up/down move   enter change   tab next   q quit"
+	}
+	if m.screen == screenPlan {
+		keys = "up/down move   space select   A all   N none   R re-scan   p plan   a write   q quit"
 	}
 	b.WriteString(styleDim.Render("  " + keys))
 	return b.String()
