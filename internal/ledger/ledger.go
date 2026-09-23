@@ -47,7 +47,7 @@ const (
 )
 
 // schemaVersion is bumped when a migration adds tables.
-const schemaVersion = 1
+const schemaVersion = 2
 
 // schemaStatements build the database. Every one is idempotent, so Open works
 // on a fresh file and on an existing one alike.
@@ -65,6 +65,24 @@ var schemaStatements = []string{
 		expires_at INTEGER NOT NULL
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_lookups_expires_at ON lookups (expires_at)`,
+	// scans is the record of which items have been looked up at all, and what
+	// the answer was. It is deliberately separate from the lookups cache and
+	// deliberately never expires.
+	//
+	// The cache answers "do we still trust this body"; this answers "have we
+	// spent a request on this item yet". On a library of tens of thousands of
+	// items against a daily allowance of 500 or 1000, the second question is
+	// the one that matters: a run must spend its requests on items it has never
+	// seen, and must be able to stop and pick up where it left off tomorrow.
+	// Expiring these rows is exactly what would make a large library never
+	// finish, so nothing here does.
+	`CREATE TABLE IF NOT EXISTS scans (
+		key        TEXT    PRIMARY KEY,
+		status     INTEGER NOT NULL,
+		kind       TEXT    NOT NULL DEFAULT '',
+		scanned_at INTEGER NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_scans_status ON scans (status)`,
 	`CREATE TABLE IF NOT EXISTS applied (
 		rating_key INTEGER NOT NULL,
 		marker_key TEXT    NOT NULL,
@@ -181,19 +199,25 @@ func (r Run) Duration() time.Duration {
 
 // Stats is the summary the status screen shows.
 type Stats struct {
-	DatabasePath    string `json:"database_path"`
-	Lookups         int    `json:"lookups"`
-	LookupHits      int    `json:"lookup_hits"`
-	LookupMisses    int    `json:"lookup_misses"`
-	AppliedItems    int    `json:"applied_items"`
-	AppliedMarkers  int    `json:"applied_markers"`
-	RequestsTotal   int    `json:"requests_total"`
-	RequestsToday   int    `json:"requests_today"`
-	Runs            int    `json:"runs"`
-	LastRun         *Run   `json:"last_run,omitempty"`
-	SchemaVersion   int    `json:"schema_version"`
-	DatabaseBytes   int64  `json:"database_bytes"`
-	LastRequestTime int64  `json:"last_request_at,omitempty"`
+	DatabasePath   string `json:"database_path"`
+	Lookups        int    `json:"lookups"`
+	LookupHits     int    `json:"lookup_hits"`
+	LookupMisses   int    `json:"lookup_misses"`
+	AppliedItems   int    `json:"applied_items"`
+	AppliedMarkers int    `json:"applied_markers"`
+	// Scanned is how many items have been looked up at all, and how those
+	// answers split. It is what says how far through a large library the tool
+	// has got, and it does not go down when the cache expires.
+	Scanned         int   `json:"scanned"`
+	ScannedWithData int   `json:"scanned_with_data"`
+	ScannedNoData   int   `json:"scanned_no_data"`
+	RequestsTotal   int   `json:"requests_total"`
+	RequestsToday   int   `json:"requests_today"`
+	Runs            int   `json:"runs"`
+	LastRun         *Run  `json:"last_run,omitempty"`
+	SchemaVersion   int   `json:"schema_version"`
+	DatabaseBytes   int64 `json:"database_bytes"`
+	LastRequestTime int64 `json:"last_request_at,omitempty"`
 }
 
 // Open opens, creating if needed, the ledger at path.
@@ -275,9 +299,20 @@ func (l *Ledger) migrate() error {
 	if err := l.db.QueryRow(`SELECT COUNT(*) FROM schema_version`).Scan(&have); err != nil {
 		return fmt.Errorf("ledger: read schema version: %w", err)
 	}
-	if have == 0 {
+	switch {
+	case have == 0:
 		if _, err := l.db.Exec(
 			`INSERT INTO schema_version (version, applied_at) VALUES (?, ?)`,
+			schemaVersion, l.now().Unix(),
+		); err != nil {
+			return fmt.Errorf("ledger: record schema version: %w", err)
+		}
+	default:
+		// Every statement above is idempotent, so an existing file gains the
+		// tables it is missing just by being opened. The recorded version is
+		// what says which build wrote it last, so it is advanced to match.
+		if _, err := l.db.Exec(
+			`UPDATE schema_version SET version = ?, applied_at = ?`,
 			schemaVersion, l.now().Unix(),
 		); err != nil {
 			return fmt.Errorf("ledger: record schema version: %w", err)
@@ -414,6 +449,107 @@ func (l *Ledger) PurgeExpired(now time.Time) (int, error) {
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil
+}
+
+// ---------------------------------------------------------------------------
+// Scan records
+// ---------------------------------------------------------------------------
+
+// ScannedItem is the record that an item has been looked up, and what the
+// answer was.
+//
+// It is what makes a large library finish. The lookup cache tells the client
+// whether a stored body is still trustworthy; this tells it whether the item
+// needs a request at all, and it never expires. A run spends its daily
+// allowance on items with no record here and leaves the rest for tomorrow.
+type ScannedItem struct {
+	// Key is the lookup key (provider:id[:season:episode]).
+	Key string
+	// Status is the status the item was scanned with: 200 or 404.
+	Status int
+	// Kind is the library kind: movie or episode.
+	Kind string
+	// ScannedAt is when the item was last scanned.
+	ScannedAt time.Time
+}
+
+// RecordScan remembers that an item has been looked up, and what came back.
+//
+// It is written with every conclusive answer (200 or 404), and it is never
+// expired: a re-scan happens when a caller asks for one, not because time
+// passed. It is idempotent, so a forced re-scan simply refreshes it.
+func (l *Ledger) RecordScan(key string, status int, kind string) error {
+	if strings.TrimSpace(key) == "" {
+		return errors.New("ledger: empty scan key")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, err := l.db.Exec(
+		`INSERT INTO scans (key, status, kind, scanned_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET
+			status     = excluded.status,
+			kind       = excluded.kind,
+			scanned_at = excluded.scanned_at`,
+		key, status, kind, l.now().Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("ledger: record scan %s: %w", key, err)
+	}
+	return nil
+}
+
+// Scan returns the scan record for key. The bool reports whether the item has
+// been scanned at all.
+func (l *Ledger) Scan(key string) (ScannedItem, bool) {
+	if strings.TrimSpace(key) == "" {
+		return ScannedItem{}, false
+	}
+	var (
+		out       ScannedItem
+		scannedAt int64
+	)
+	err := l.db.QueryRow(
+		`SELECT key, status, kind, scanned_at FROM scans WHERE key = ?`,
+		key,
+	).Scan(&out.Key, &out.Status, &out.Kind, &scannedAt)
+	if err != nil {
+		return ScannedItem{}, false
+	}
+	out.ScannedAt = time.Unix(scannedAt, 0)
+	return out, true
+}
+
+// Scanned reports whether an item has been scanned.
+func (l *Ledger) Scanned(key string) bool {
+	_, found := l.Scan(key)
+	return found
+}
+
+// ForgetScan drops an item's scan record, so the next run looks it up again.
+// It is what an explicit re-scan of one item leaves behind.
+func (l *Ledger) ForgetScan(key string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, err := l.db.Exec(`DELETE FROM scans WHERE key = ?`, key); err != nil {
+		return fmt.Errorf("ledger: forget scan %s: %w", key, err)
+	}
+	return nil
+}
+
+// ScanCounts reports how many items have been scanned, split by what the answer
+// was. It is the progress figure a large library is judged by.
+func (l *Ledger) ScanCounts() (total, withData, noData int, err error) {
+	if err := l.db.QueryRow(`SELECT COUNT(*) FROM scans`).Scan(&total); err != nil {
+		return 0, 0, 0, fmt.Errorf("ledger: count scans: %w", err)
+	}
+	if err := l.db.QueryRow(`SELECT COUNT(*) FROM scans WHERE status = 200`).Scan(&withData); err != nil {
+		return 0, 0, 0, fmt.Errorf("ledger: count scans with data: %w", err)
+	}
+	if err := l.db.QueryRow(`SELECT COUNT(*) FROM scans WHERE status = 404`).Scan(&noData); err != nil {
+		return 0, 0, 0, fmt.Errorf("ledger: count scans without data: %w", err)
+	}
+	return total, withData, noData, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +811,11 @@ func (l *Ledger) Stats() (Stats, error) {
 	if err := count(`SELECT COUNT(*) FROM runs`, &out.Runs); err != nil {
 		return out, err
 	}
+	total, withData, noData, err := l.ScanCounts()
+	if err != nil {
+		return out, err
+	}
+	out.Scanned, out.ScannedWithData, out.ScannedNoData = total, withData, noData
 	today, err := l.RequestsToday(SourceAny)
 	if err != nil {
 		return out, err

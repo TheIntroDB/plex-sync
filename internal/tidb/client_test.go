@@ -371,31 +371,36 @@ func TestLookupFreshThenCached(t *testing.T) {
 		t.Errorf("cached = %+v, want the raw 200 body and kind movie", cached)
 	}
 
-	// The second lookup is answered from the ledger, with no network call.
+	// The second lookup is answered from the ledger, with no network call: the
+	// item has been scanned, so it is not asked about again.
 	set2, res2, err := h.client.Lookup(context.Background(), item)
 	if err != nil {
 		t.Fatalf("second Lookup: %v", err)
 	}
-	if !res2.Cached || res2.Reason != ReasonHit || res2.Status != 200 {
-		t.Errorf("second result = %+v, want a cached hit", res2)
+	if !res2.Cached || !res2.Skipped || res2.Reason != ReasonScanned || res2.Status != 200 {
+		t.Errorf("second result = %+v, want a scanned answer with no request", res2)
 	}
 	if len(set2.Segments) != len(set.Segments) {
 		t.Errorf("cached segments = %+v, want the same as the first answer", set2.Segments)
 	}
 	if h.server.Count() != 1 {
-		t.Errorf("server saw %d requests, want 1: a fresh entry must not be re-fetched", h.server.Count())
+		t.Errorf("server saw %d requests, want 1: a scanned item must not be re-fetched", h.server.Count())
 	}
 
 	usage := h.client.Usage()
-	if usage.Requests != 1 || usage.Lookups != 2 || usage.CacheHits != 1 || usage.Data != 2 {
-		t.Errorf("Usage = %+v, want 1 request, 2 lookups, 1 cache hit, 2 data", usage)
+	if usage.Requests != 1 || usage.Lookups != 2 || usage.CacheHits != 1 || usage.Skipped != 1 || usage.Data != 2 {
+		t.Errorf("Usage = %+v, want 1 request, 2 lookups, 1 cache hit, 1 skipped, 2 data", usage)
 	}
 	if usage.Today != 1 {
 		t.Errorf("Usage.Today = %d, want 1", usage.Today)
 	}
 }
 
-func TestLookup404IsCachedButExpires(t *testing.T) {
+// A 404 is remembered. It is cached for MissTTLDays so the body expires, but the
+// record that the item was scanned does not: a library of tens of thousands of
+// items against a few hundred requests a day only ever finishes if an item is
+// asked about once. Asking again is a re-scan, and nothing does that on a timer.
+func TestScannedItemIsNotAskedAgainWhenTheCacheExpires(t *testing.T) {
 	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
 		js(w, 404, `{"error":"no data"}`)
 	}, func(cfg *config.TheIntroDB) { cfg.MissTTLDays = 14 })
@@ -418,31 +423,54 @@ func TestLookup404IsCachedButExpires(t *testing.T) {
 	if h.server.Count() != 1 {
 		t.Fatalf("server saw %d requests, want 1", h.server.Count())
 	}
+	if !h.ledger.Scanned("tmdb:999:movie") {
+		t.Error("the item was not recorded as scanned")
+	}
 
 	if _, res2, err := h.client.Lookup(context.Background(), item); err != nil {
 		t.Fatalf("second Lookup: %v", err)
-	} else if !res2.Cached || res2.Reason != ReasonNoData {
-		t.Errorf("second result = %+v, want a cached no-data", res2)
+	} else if !res2.Cached || !res2.Skipped || res2.Reason != ReasonScanned {
+		t.Errorf("second result = %+v, want an answer from the scan record", res2)
 	}
 	if h.server.Count() != 1 {
-		t.Errorf("a cached 404 made a network call")
+		t.Errorf("a scanned 404 made a network call")
 	}
 
-	// A 404 turns into a 200 the moment someone submits the timing, so it must
-	// expire and be asked again.
-	h.clock.Advance(15 * 24 * time.Hour)
-	if _, res3, err := h.client.Lookup(context.Background(), item); err != nil {
+	// A year later: past every TTL, and still not asked again. The miss TTL
+	// still expires the cached body, which is why the body is not trusted
+	// forever; it just no longer decides when a request is made.
+	h.clock.Advance(365 * 24 * time.Hour)
+	set3, res3, err := h.client.Lookup(context.Background(), item)
+	if err != nil {
 		t.Fatalf("third Lookup: %v", err)
-	} else if res3.Cached {
-		t.Errorf("third result = %+v, want a fresh request after the miss TTL", res3)
+	}
+	if !res3.Skipped || res3.Status != 404 || len(set3.Segments) != 0 {
+		t.Errorf("third result = %+v, want the remembered no-data with no request", res3)
+	}
+	if h.server.Count() != 1 {
+		t.Errorf("server saw %d requests, want 1: only a re-scan asks again", h.server.Count())
+	}
+
+	// A re-scan does ask again.
+	if _, res4, err := h.client.LookupForced(context.Background(), item); err != nil {
+		t.Fatalf("LookupForced: %v", err)
+	} else if res4.Cached || res4.Skipped || res4.Reason != ReasonNoData {
+		t.Errorf("forced result = %+v, want a fresh request", res4)
 	}
 	if h.server.Count() != 2 {
-		t.Errorf("server saw %d requests, want 2 after the miss TTL expired", h.server.Count())
+		t.Errorf("server saw %d requests, want 2 after a re-scan", h.server.Count())
 	}
 }
 
-func TestLookup200UsesHitTTLNotMissTTL(t *testing.T) {
+// An item that was scanned once is never asked about again, whatever the cache
+// TTL says, and a re-scan is what replaces the answer: the 404 becomes a 200,
+// the stored body is refreshed, and the next ordinary lookup serves the new one.
+func TestLookupForcedRefreshesAScannedItem(t *testing.T) {
 	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
+		if call == 1 {
+			js(w, 404, `{"error":"no data"}`)
+			return
+		}
 		js(w, 200, sampleBody)
 	}, func(cfg *config.TheIntroDB) {
 		cfg.HitTTLDays = 30
@@ -450,31 +478,49 @@ func TestLookup200UsesHitTTLNotMissTTL(t *testing.T) {
 	})
 
 	item := movieItem(550, 1470000)
-	if _, _, err := h.client.Lookup(context.Background(), item); err != nil {
-		t.Fatalf("Lookup: %v", err)
-	}
 
-	// 15 days is past MissTTLDays but inside HitTTLDays: a 200 must still be
-	// served from the ledger.
-	h.clock.Advance(15 * 24 * time.Hour)
 	if _, res, err := h.client.Lookup(context.Background(), item); err != nil {
 		t.Fatalf("Lookup: %v", err)
-	} else if !res.Cached {
-		t.Errorf("result = %+v, want a cached hit at 15 days", res)
+	} else if res.Status != 404 {
+		t.Fatalf("first result = %+v, want the 404 the server sent", res)
+	}
+
+	// Way past the hit TTL: still no request, because it was scanned.
+	h.clock.Advance(400 * 24 * time.Hour)
+	if _, res, err := h.client.Lookup(context.Background(), item); err != nil {
+		t.Fatalf("Lookup: %v", err)
+	} else if !res.Skipped {
+		t.Errorf("result = %+v, want it served from the scan record at 400 days", res)
 	}
 	if h.server.Count() != 1 {
-		t.Errorf("server saw %d requests, want 1", h.server.Count())
+		t.Fatalf("server saw %d requests, want 1", h.server.Count())
 	}
 
-	// 31 days is past HitTTLDays.
-	h.clock.Advance(17 * 24 * time.Hour)
-	if _, res, err := h.client.Lookup(context.Background(), item); err != nil {
-		t.Fatalf("Lookup: %v", err)
-	} else if res.Cached {
-		t.Errorf("result = %+v, want a refresh past the hit TTL", res)
+	set, res, err := h.client.LookupForced(context.Background(), item)
+	if err != nil {
+		t.Fatalf("LookupForced: %v", err)
+	}
+	if res.Cached || res.Skipped || res.Status != 200 {
+		t.Errorf("forced result = %+v, want a fresh 200", res)
+	}
+	if !set.Has(model.SegmentIntro) || !set.Has(model.SegmentCredits) {
+		t.Errorf("forced segments = %+v, want the newly submitted intro and credits", set.Segments)
 	}
 	if h.server.Count() != 2 {
-		t.Errorf("server saw %d requests, want 2", h.server.Count())
+		t.Errorf("server saw %d requests, want 2 after the re-scan", h.server.Count())
+	}
+	if scan, found := h.ledger.Scan("tmdb:550:movie"); !found || scan.Status != 200 {
+		t.Errorf("scan record = %+v found=%v, want it refreshed to 200", scan, found)
+	}
+
+	// The refreshed answer is what a later run serves, again without asking.
+	if _, res5, err := h.client.Lookup(context.Background(), item); err != nil {
+		t.Fatalf("Lookup: %v", err)
+	} else if !res5.Skipped || res5.Status != 200 {
+		t.Errorf("result = %+v, want the refreshed 200 from the scan record", res5)
+	}
+	if h.server.Count() != 2 {
+		t.Errorf("server saw %d requests, want 2: nothing asked again without a re-scan", h.server.Count())
 	}
 }
 
@@ -519,6 +565,9 @@ func TestLookupBudgetRefusesTheRequest(t *testing.T) {
 	}
 	if apiErr.IsTerminal() {
 		t.Error("a spent budget is not terminal for the run: it resets at midnight")
+	}
+	if !IsBudgetError(err) {
+		t.Error("a spent budget must be reported as one, so a scan pauses rather than failing")
 	}
 	if !strings.Contains(apiErr.Error(), "budget") || !strings.Contains(apiErr.Error(), "00:00 UTC") {
 		t.Errorf("budget error message = %q, want it to name the budget and the reset", apiErr.Error())
@@ -700,6 +749,11 @@ func TestUsageLimitWaitIsNotClampedToFiveMinutes(t *testing.T) {
 	var apiErr *Error
 	if !errors.As(err, &apiErr) || apiErr.Kind != KindUsageLimit {
 		t.Fatalf("error = %v, want a usage-limit *Error", err)
+	}
+	if !IsBudgetError(err) {
+		// A scan pauses on this rather than failing, so the next run carries on
+		// instead of the nightly timer reporting an error every night.
+		t.Error("a spent daily allowance must be reported as a budget error so a scan pauses")
 	}
 	if res.Reason != ReasonUsageLimit || res.Status != 429 {
 		t.Errorf("result = %+v, want a 429 usage-limited", res)

@@ -303,8 +303,9 @@ func (s *Server) register() {
 		Path:        "/plan",
 		Summary:     "Compute the change set without writing anything",
 		Description: "Asks TheIntroDB about every item, which can take minutes on a large " +
-			"library. Every answer is cached in the ledger, so a following apply does not " +
-			"pay for the requests twice.",
+			"library. An item that has already been scanned is answered from the ledger without " +
+			"a request, so a following apply does not pay for the requests twice and a large " +
+			"library is worked through a day at a time.",
 		Tags: []string{"run"},
 	}, func(ctx context.Context, in *planInput) (*planOutput, error) {
 		res, err := s.runner.Plan(ctx, sync.Options{

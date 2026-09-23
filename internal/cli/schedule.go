@@ -141,6 +141,15 @@ writes with --yes.
 					"markers_removed", result.Stats.Removed,
 					"applied", result.Applied,
 					"took", time.Since(started).Round(time.Second).String())
+				if result.Survey.Paused {
+					// Not a failure: the allowance is spent, everything the
+					// run did is recorded, and the next firing carries on from
+					// the same place.
+					log.Info("the run stopped early: the day's request allowance is spent",
+						"scanned", result.Survey.Skipped,
+						"remaining", result.Survey.Remaining,
+						"resume", "the next run continues from here")
+				}
 			}
 
 			if once {

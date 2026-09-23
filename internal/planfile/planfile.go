@@ -64,7 +64,7 @@ func Save(path string, plan *model.Plan, meta Meta) error {
 	if meta.CreatedAt.IsZero() {
 		meta.CreatedAt = time.Now()
 	}
-	meta.Items = len(plan.Work())
+	meta.Items = len(plan.SelectedWork())
 
 	body, err := json.MarshalIndent(File{Format: Format, Meta: meta, Plan: *plan}, "", "  ")
 	if err != nil {
