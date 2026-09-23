@@ -167,8 +167,12 @@ docker run -d --restart=unless-stopped \
   -e PLEX_TOKEN=xxxxxxxxxxxx \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server:/plex:ro" \
   -v "/mnt/cache/appdata/plex-sync:/state" \
-  theintrodb/plex-sync:latest schedule --yes
+  ghcr.io/theintrodb/plex-sync:latest schedule --yes
 ```
+
+The image is published to the GitHub Container Registry as
+`ghcr.io/theintrodb/plex-sync`, tagged with each release version and with
+`latest`.
 
 The Plex database must be mounted at its real, non-FUSE path. On Unraid that
 means the `/mnt/cache/...` path, never `/mnt/user/...`: SQLite locking through
@@ -193,7 +197,7 @@ docker run --rm \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
   -e PLEX_URL=http://unreachable \
   -e PLEX_DB=/db/com.plexapp.plugins.library.db \
-  theintrodb/plex-sync:latest apply --preview /state/preview.json --yes --plex-stopped
+  ghcr.io/theintrodb/plex-sync:latest apply --preview /state/preview.json --yes --plex-stopped
 ```
 
 Neither half is trusted on its own: applying a saved plan checks every change

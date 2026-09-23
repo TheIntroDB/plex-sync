@@ -61,6 +61,30 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# The container image, published to the GitHub Container Registry on every
+# release. Only the linux binaries are used; the image is a multi-arch manifest
+# for amd64 and arm64, which covers Plex servers on x86 and Apple Silicon/ARM
+# NAS hosts. The version tag plus `latest` keep the README's `:latest` working
+# while still pinning the exact release.
+dockers_v2:
+  - images:
+      - ghcr.io/theintrodb/plex-sync
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    annotations:
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.description": "Plex intro and credits markers from TheIntroDB"
+      "org.opencontainers.image.url": "https://github.com/TheIntroDB/plex-sync"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.licenses": "GPL-3.0-only"
+
 changelog:
   sort: asc
   groups:
@@ -119,11 +143,14 @@ release:
 
     ## Container image
 
-    ```
+    ```bash
     docker run --rm -it \
       -e PLEX_URL=http://plex:32400 \
       -e PLEX_TOKEN=... \
       -v "/path/to/Plex Media Server:/plex:ro" \
       -v /path/to/state:/state \
-      theintrodb/plex-sync:{{ .Tag }} tui
+      ghcr.io/theintrodb/plex-sync:{{ .Tag }} tui
     ```
+
+    `latest` is also published, pinned to this version:
+    `ghcr.io/theintrodb/plex-sync:latest`.

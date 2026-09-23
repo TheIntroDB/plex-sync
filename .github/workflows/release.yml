@@ -26,6 +26,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   # The tests run on every platform the release ships, before anything is built.
@@ -77,6 +78,23 @@ jobs:
             exit 1
           fi
 
+      # The container image is a multi-arch manifest (amd64 + arm64), so the
+      # runner needs QEMU for the non-native architecture and a buildx builder.
+      # Logging in with the built-in token is what lets the image land on ghcr.io
+      # under the repo's own namespace, with no extra registry secret to manage.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Check the release configuration
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -96,13 +114,16 @@ jobs:
 
       # The rehearsal. Runs on a manual trigger, and on any tag with a suffix
       # that marks it as not-for-release, so a mistyped tag cannot publish.
+      # Snapshot mode never pushes anywhere, so the container image is built
+      # and loaded locally here, exercising the Dockerfile the same way the
+      # real release will.
       - name: Build without publishing
         if: github.event_name != 'push' || inputs.snapshot
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --snapshot --skip=publish
+          args: release --clean --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

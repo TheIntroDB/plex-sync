@@ -249,7 +249,7 @@ docker run -d --name plex-sync --restart=unless-stopped \
   -e PLEX_TOKEN=xxxxxxxxxxxx \
   -e PLEX_DB="/plex/Plug-in Support/Databases/com.plexapp.plugins.library.db" \
   -e PLEX_SYNC_SCHEDULE='30 7 * * *' \
-  plex-sync:latest schedule --yes
+  ghcr.io/theintrodb/plex-sync:latest schedule --yes
 ```
 
 ### When the container cannot see Plex
@@ -268,7 +268,7 @@ docker run --rm \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases:/db" \
   -e PLEX_DB=/db/com.plexapp.plugins.library.db \
   -e PLEX_URL=http://unreachable \
-  plex-sync:latest apply --preview /state/preview.json --yes --plex-stopped
+  ghcr.io/theintrodb/plex-sync:latest apply --preview /state/preview.json --yes --plex-stopped
 ```
 
 `--plex-stopped` is honest here in a way it is not elsewhere: nothing else is

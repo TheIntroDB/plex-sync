@@ -1,33 +1,16 @@
 # plex-sync container image.
 #
-# Two stages: a builder with the Go toolchain, and a runtime image with nothing
-# in it but the binary and a CA bundle. The driver is pure Go, so no CGO and no
-# libc are needed, which is what makes this small and portable.
-
-FROM golang:1.27-alpine AS builder
-
-WORKDIR /src
-
-# Dependencies first, so a source change does not invalidate the module cache.
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-
-ARG VERSION=docker
-ARG COMMIT=none
-ARG DATE=unknown
-RUN CGO_ENABLED=0 go build \
-        -trimpath \
-        -ldflags "-s -w \
-            -X github.com/TheIntroDB/plex-sync/internal/buildinfo.Version=${VERSION} \
-            -X github.com/TheIntroDB/plex-sync/internal/buildinfo.Commit=${COMMIT} \
-            -X github.com/TheIntroDB/plex-sync/internal/buildinfo.Date=${DATE}" \
-        -o /out/plex-sync .
+# The release pipeline (GoReleaser, dockers_v2) has already compiled the binary
+# for every target platform with the version, commit and date baked in, so this
+# Dockerfile does not build anything: it copies the finished binary out of the
+# build context and adds the runtime bits. The driver is pure Go, so no CGO and
+# no libc are needed, which is what makes the image small and portable.
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=builder /out/plex-sync /plex-sync
+# GoReleaser stages the binary per platform as $TARGETPLATFORM/plex-sync.
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/plex-sync /plex-sync
 
 # The ledger, backups, undo journals and fingerprints live here, so mount it.
 VOLUME ["/state"]
