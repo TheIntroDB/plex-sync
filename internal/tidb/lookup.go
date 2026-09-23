@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/TheIntroDB/plex-sync/internal/ledger"
 	"github.com/TheIntroDB/plex-sync/internal/model"
 )
 
@@ -24,11 +25,16 @@ type LookupResult struct {
 	// Cached reports that the answer came from the ledger without a network
 	// call.
 	Cached bool `json:"cached"`
-	// Reason is one of ReasonHit, ReasonMiss, ReasonNoData, ReasonBudget,
-	// ReasonRateLimit, ReasonUsageLimit or ReasonError.
+	// Skipped reports that the answer came from the record of an earlier scan
+	// rather than from a cache entry that is still fresh: the item has been
+	// looked up before, so it was not asked about again.
+	Skipped bool `json:"skipped,omitempty"`
+	// Reason is one of ReasonHit, ReasonMiss, ReasonNoData, ReasonScanned,
+	// ReasonBudget, ReasonRateLimit, ReasonUsageLimit or ReasonError.
 	//
 	// It describes the ledger decision first: ReasonHit when a fresh cache
-	// entry answered, ReasonMiss when the network had to. ReasonNoData means
+	// entry answered, ReasonScanned when the item had already been scanned at
+	// some point, ReasonMiss when the network had to. ReasonNoData means
 	// TheIntroDB holds nothing for the item, whether that came from the cache
 	// or from a fresh 404; ReasonBudget, ReasonRateLimit and ReasonUsageLimit
 	// mean no answer was obtained, and ReasonError means the lookup failed.
@@ -54,15 +60,38 @@ func (r LookupResult) OK() bool { return r.Status == 200 || r.Status == 404 }
 
 // Lookup answers "what does TheIntroDB know about this item".
 //
-// The order is deliberate: the ledger is consulted first and, while the answer
-// is fresh, it is returned without any network call at all. Only then is the
-// budget checked, the pacing floor and any hold applied, the request recorded
-// and the API asked, with the real file length, which is what makes the answer
-// cut-aware.
+// The order is deliberate. First, the item's scan record: if it has been looked
+// up before, the answer stored then is returned and no request is made, however
+// long ago that was. A library of tens of thousands of items against a daily
+// allowance of 500 or 1000 only ever finishes if each item is asked about once,
+// and an item that was scanned is what "finished" means; the way to ask again
+// is LookupForced, which is what a plan that names the item for a re-scan does.
+//
+// Second, the lookup cache, for a body written before this build recorded
+// scans: while it is fresh it is served without a request.
+//
+// Only then is the budget checked, the pacing floor and any hold applied, the
+// request recorded and the API asked, with the real file length, which is what
+// makes the answer cut-aware. Every conclusive answer, 200 or 404, is recorded
+// as a scan and cached.
 //
 // A miss is a miss: an empty SegmentSet comes back with ReasonNoData. No
 // segment is ever invented.
 func (c *Client) Lookup(ctx context.Context, item model.LibraryItem) (model.SegmentSet, LookupResult, error) {
+	return c.lookup(ctx, item, false)
+}
+
+// LookupForced answers the same question while ignoring the record of the
+// item's earlier scans, so the API is asked again whatever the ledger holds.
+//
+// This is what "re-scan this item" means, and it is the only thing that spends
+// a request on an item that has already been scanned. A successful re-scan
+// replaces the cached body and refreshes the scan record.
+func (c *Client) LookupForced(ctx context.Context, item model.LibraryItem) (model.SegmentSet, LookupResult, error) {
+	return c.lookup(ctx, item, true)
+}
+
+func (c *Client) lookup(ctx context.Context, item model.LibraryItem, force bool) (model.SegmentSet, LookupResult, error) {
 	started := c.clock()
 	empty := model.SegmentSet{Source: model.SourceTheIntroDB}
 
@@ -88,38 +117,25 @@ func (c *Client) Lookup(ctx context.Context, item model.LibraryItem) (model.Segm
 
 	now := c.clock()
 
-	if c.ledger != nil {
-		if cached, found := c.ledger.Lookup(key); found && cached.Fresh(now) {
-			switch cached.Status {
-			case 200:
-				set, err := ParseSegments(cached.Body)
-				if err == nil {
-					c.note(CachedData)
-					remaining, known := c.currentRemaining()
-					return set, LookupResult{
-						Status:         200,
-						Cached:         true,
-						Reason:         ReasonHit,
-						Remaining:      remaining,
-						RemainingKnown: known,
-						Elapsed:        c.clock().Sub(started),
-						Key:            key,
-					}, nil
-				}
-				// A body we can no longer parse is not a reason to fail the
-				// run: fall through and ask again.
-			case 404:
-				c.note(CachedNoData)
-				remaining, known := c.currentRemaining()
-				return empty, LookupResult{
-					Status:         404,
-					Cached:         true,
-					Reason:         ReasonNoData,
-					Remaining:      remaining,
-					RemainingKnown: known,
-					Elapsed:        c.clock().Sub(started),
-					Key:            key,
-				}, nil
+	if c.ledger != nil && !force {
+		cached, haveBody := c.ledger.Lookup(key)
+
+		// Already scanned: answer from what was stored then, without a
+		// request. The scan record is what says so, so a body whose cache TTL
+		// has run out is still served rather than fetched again.
+		if scanned, haveScan := c.ledger.Scan(key); haveScan && haveBody {
+			if set, result, ok := c.serveStored(key, cached, scanned.Status, true, started); ok {
+				return set, result, nil
+			}
+		}
+
+		// No scan record yet, but a body an older build stored may still be
+		// fresh. Serve it, and record the scan so the next run skips the item
+		// rather than coming back to it when the TTL runs out.
+		if haveBody && cached.Fresh(now) {
+			if set, result, ok := c.serveStored(key, cached, cached.Status, false, started); ok {
+				_ = c.ledger.RecordScan(key, cached.Status, string(item.Kind))
+				return set, result, nil
 			}
 		}
 	}
@@ -148,13 +164,17 @@ func (c *Client) Lookup(ctx context.Context, item model.LibraryItem) (model.Segm
 			return empty, result, perr
 		}
 		c.store(key, 200, string(resp.Body), item)
+		c.recordScan(key, 200, item)
 		c.note(Data)
 		return set, result, nil
 
 	case 404:
-		// Cached for MissTTLDays only: a 404 becomes a 200 the moment someone
-		// submits the timing, so it must expire.
+		// The body is cached for MissTTLDays because a 404 becomes a 200 the
+		// moment someone submits the timing, so the body must expire. The scan
+		// record does not: the item has been asked about, and asking again is
+		// a re-scan rather than something time does on its own.
 		c.store(key, 404, string(resp.Body), item)
+		c.recordScan(key, 404, item)
 		c.note(NoData)
 		result.Reason = ReasonNoData
 		return empty, result, nil
@@ -265,6 +285,74 @@ func (c *Client) buildQuery(item model.LibraryItem) url.Values {
 	return q
 }
 
+// serveStored turns a stored answer into a result, with no request. The bool
+// reports whether the stored body could be used; a body this build can no
+// longer parse is not a reason to fail, so the caller falls through and asks
+// again.
+//
+// skipped says the answer came from the record of an earlier scan rather than
+// from a cache entry that is still fresh, which is what the status output and
+// the survey report differently: one is a run that has nothing left to ask, the
+// other is a cache still doing its job.
+func (c *Client) serveStored(
+	key string,
+	cached ledger.CachedLookup,
+	status int,
+	skipped bool,
+	started time.Time,
+) (model.SegmentSet, LookupResult, bool) {
+	empty := model.SegmentSet{Source: model.SourceTheIntroDB}
+
+	reason := ReasonHit
+	note := CachedData
+	switch status {
+	case 200:
+	case 404:
+		reason, note = ReasonNoData, CachedNoData
+	default:
+		return empty, LookupResult{}, false
+	}
+	if skipped {
+		reason = ReasonScanned
+		if status == 404 {
+			note = SkippedNoData
+		} else {
+			note = SkippedData
+		}
+	}
+
+	set := empty
+	if status == 200 {
+		parsed, err := ParseSegments(cached.Body)
+		if err != nil {
+			return empty, LookupResult{}, false
+		}
+		set = parsed
+	}
+
+	c.note(note)
+	remaining, known := c.currentRemaining()
+	return set, LookupResult{
+		Status:         status,
+		Cached:         true,
+		Skipped:        skipped,
+		Reason:         reason,
+		Remaining:      remaining,
+		RemainingKnown: known,
+		Elapsed:        c.clock().Sub(started),
+		Key:            key,
+	}, true
+}
+
+// recordScan remembers that an item has been looked up, so that a later run
+// spends its requests on the items it has never seen.
+func (c *Client) recordScan(key string, status int, item model.LibraryItem) {
+	if c.ledger == nil {
+		return
+	}
+	_ = c.ledger.RecordScan(key, status, string(item.Kind))
+}
+
 // store caches an answer: 200s for HitTTLDays, 404s for MissTTLDays.
 func (c *Client) store(key string, status int, body string, item model.LibraryItem) {
 	if c.ledger == nil {
@@ -290,6 +378,8 @@ const (
 	NoData
 	CachedData
 	CachedNoData
+	SkippedData
+	SkippedNoData
 	RateLimited
 	UsageLimited
 	Failed
@@ -308,6 +398,14 @@ func (c *Client) note(kind noteKind) {
 		c.data++
 	case CachedNoData:
 		c.cacheHits++
+		c.noData++
+	case SkippedData:
+		c.cacheHits++
+		c.skipped++
+		c.data++
+	case SkippedNoData:
+		c.cacheHits++
+		c.skipped++
 		c.noData++
 	case RateLimited:
 		c.rateLimited++

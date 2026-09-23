@@ -55,6 +55,21 @@ type Options struct {
 	ForceCreateInitialTag bool
 	// Sources overrides the enabled alternate sources for this run.
 	Sources []string
+	// Rescan lists lookup keys to ask TheIntroDB about again although they have
+	// already been scanned. It is the only way an item that was scanned before
+	// gets a second request: nothing expires on its own, so the answer for a
+	// large library is stable until someone asks for it to change.
+	Rescan []string
+	// RescanAll asks about every item again, scanned or not. It is a full
+	// refresh, and it costs a full library of requests.
+	RescanAll bool
+	// Only, when non-empty, limits the write to these rating keys. It narrows the
+	// plan's own selection rather than replacing it, so it cannot bring back an
+	// item the plan turned off.
+	Only []int
+	// Deselected lists rating keys to leave out of the write. It is what the
+	// preview screen's selection becomes.
+	Deselected []int
 	// Progress receives stage and item updates. It may be nil.
 	Progress func(Event)
 
@@ -87,6 +102,23 @@ type Survey struct {
 	BudgetKnown  bool
 	Errors       []string
 	ChapterItems int
+	// Skipped counts the items answered from the record of an earlier scan,
+	// with no request. On a large library this is most of a run, and it is the
+	// number that says the library is being covered rather than re-covered.
+	Skipped int
+	// Rescanned counts the items asked about again because they were named for
+	// a re-scan.
+	Rescanned int
+	// Remaining is how many items still had no scan record when the run
+	// stopped, counted from the items this run examined.
+	Remaining int
+	// Paused reports that the run stopped early because the day's request
+	// allowance was spent. It is not a failure: the next run picks up from
+	// here, which is how a library of tens of thousands of items is worked
+	// through a day at a time.
+	Paused bool
+	// PauseReason explains why the run paused, for the log and the screens.
+	PauseReason string
 }
 
 // Result is the outcome of a plan or a run.
@@ -268,6 +300,8 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 	existing := map[int][]model.ExistingMarker{}
 	written := map[int][]model.Marker{}
 	sets := map[int]map[model.SourceName]model.SegmentSet{}
+	rescans := rescanSet(opts.Rescan)
+	paused := false
 	for index, item := range items {
 		if err := ctx.Err(); err != nil {
 			return res, err
@@ -289,21 +323,54 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 
 		itemSets := map[model.SourceName]model.SegmentSet{}
 
-		// TheIntroDB first. Its answer is cached in the ledger, so repeat runs
-		// cost nothing until the cache entry expires.
-		if _, ok := item.LookupKey(); ok {
-			body, look, err := r.app.TIDB.Lookup(ctx, item)
+		// TheIntroDB first. An item that has already been scanned is answered
+		// from what the ledger holds from then, without a request, so a run
+		// spends its allowance on the items it has never seen. Naming an item
+		// for a re-scan is the only thing that asks about it twice.
+		if key, ok := item.LookupKey(); ok {
+			force := opts.RescanAll || rescans[key]
+			var (
+				body model.SegmentSet
+				look tidb.LookupResult
+			)
+			if force {
+				body, look, err = r.app.TIDB.LookupForced(ctx, item)
+			} else {
+				body, look, err = r.app.TIDB.Lookup(ctx, item)
+			}
 			res.Survey.Lookups++
-			if err != nil {
+			switch {
+			case err != nil && tidb.IsBudgetError(err):
+				// The day's request allowance is spent. This is not a
+				// failure: the scan stops here, everything it did is already
+				// recorded, and the next run carries on from the same place.
+				// That is what lets a library of tens of thousands of items
+				// finish, a few hundred or a thousand items at a time.
+				res.Survey.Paused = true
+				res.Survey.PauseReason = err.Error()
+				r.app.Log.Warn("stopping the scan: the request allowance is spent",
+					"examined", index+1, "of", len(items),
+					"resume", "the next run continues from here, because every scan is recorded")
+				paused = true
+
+			case err != nil:
 				if tidb.IsTerminal(err) {
 					// A rejected key or an item with no usable id: retrying in
 					// this run cannot help, so stop rather than hammering it.
 					return res, fmt.Errorf("%s: %w", item.Label(), err)
 				}
 				res.Survey.Errors = append(res.Survey.Errors, item.Label()+": "+err.Error())
-			} else {
+
+			default:
 				if look.Cached {
 					res.Survey.Cached++
+				}
+				if look.Skipped {
+					res.Survey.Skipped++
+				} else if force {
+					// A re-scan that reached the network rather than the
+					// record of a previous one.
+					res.Survey.Rescanned++
 				}
 				res.Survey.BudgetLeft = look.Remaining
 				res.Survey.BudgetKnown = look.RemainingKnown
@@ -314,6 +381,9 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 					res.Survey.NoData++
 				}
 			}
+		}
+		if paused {
+			break
 		}
 
 		// Chapters, when enabled. Free and exact for this file, so it also
@@ -349,7 +419,23 @@ func (r *Runner) Plan(ctx context.Context, opts Options) (*Result, error) {
 		PALSpedUp: planner.PALSpedUp(seen),
 	}
 	res.Plan = planner.Build(seen, inputs, *cfg)
-	res.Survey.Planned = len(res.Plan.Work())
+
+	// Record what was asked for, so a plan saved from this run says which items
+	// were named for a re-scan, and so an apply can be told what was chosen.
+	if len(opts.Rescan) > 0 || opts.RescanAll {
+		selection := res.Plan.EnsureSelection()
+		for _, key := range opts.Rescan {
+			selection.MarkRescan(key, true)
+		}
+	}
+	if paused {
+		res.Survey.Remaining = r.countRemaining(seen)
+		// Report what was examined rather than the size of the library: a run
+		// that stopped early has not looked at the rest, and saying it did
+		// would make the summary disagree with the plan underneath it.
+		res.Survey.Items = len(seen)
+	}
+	res.Survey.Planned = len(res.Plan.SelectedWork())
 	for _, item := range res.Plan.Items {
 		if item.Skipped() {
 			res.Survey.SkipReasons[item.Reason]++
@@ -369,7 +455,7 @@ func (r *Runner) Apply(ctx context.Context, res *Result, opts Options) error {
 	if res == nil {
 		return errors.New("nothing to apply")
 	}
-	work := res.Plan.Work()
+	work := selectedWork(res.Plan, opts)
 	if len(work) == 0 {
 		r.app.Log.Info("nothing to do")
 		return nil
@@ -523,7 +609,7 @@ func (r *Runner) ApplyPlanFile(ctx context.Context, path string, opts Options) (
 	}
 	r.app.Log.Info("applying a saved plan",
 		"path", path,
-		"items", len(plan.Work()),
+		"items", len(plan.SelectedWork()),
 		"made", meta.Describe())
 
 	res := &Result{Plan: *plan}
@@ -659,6 +745,13 @@ func (r *Runner) recordRun(started time.Time, kind string, res *Result, runErr e
 	if runErr != nil {
 		run.Status = "error"
 		run.Note = kind + ": " + runErr.Error()
+	} else if res != nil && res.Survey.Paused {
+		// A run that stopped because the day's allowance was spent did what it
+		// set out to do and simply ran out of requests. Recording it as an
+		// error would be wrong, and a nightly timer that reports failure every
+		// night is a timer nobody reads.
+		run.Status = "paused"
+		run.Note = kind + " (paused: allowance spent)"
 	}
 	if res != nil {
 		run.Items = res.Survey.Items
@@ -684,6 +777,65 @@ func (r *Runner) emit(opts Options, event Event) {
 	if opts.Progress != nil {
 		opts.Progress(event)
 	}
+}
+
+// countRemaining reports how many of the items a run examined still have no
+// scan record, which is the work it is leaving for the next run.
+func (r *Runner) countRemaining(items []model.LibraryItem) int {
+	if r.app.Ledger == nil {
+		return 0
+	}
+	left := 0
+	for _, item := range items {
+		key, ok := item.LookupKey()
+		if !ok {
+			continue
+		}
+		if !r.app.Ledger.Scanned(key) {
+			left++
+		}
+	}
+	return left
+}
+
+// rescanSet turns a list of lookup keys into a set, ignoring blanks.
+func rescanSet(keys []string) map[string]bool {
+	out := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			out[trimmed] = true
+		}
+	}
+	return out
+}
+
+// selectedWork is the part of a plan a run should write: the items that need a
+// change, minus the ones turned off in the plan, minus the ones the caller
+// excluded, and restricted to the caller's whitelist when it gave one.
+//
+// Without this, a preview screen's selection would be decoration: the plan
+// would be written in full whatever was chosen.
+func selectedWork(plan model.Plan, opts Options) []model.ItemPlan {
+	only := make(map[int]bool, len(opts.Only))
+	for _, key := range opts.Only {
+		only[key] = true
+	}
+	off := make(map[int]bool, len(opts.Deselected))
+	for _, key := range opts.Deselected {
+		off[key] = true
+	}
+
+	var out []model.ItemPlan
+	for _, item := range plan.SelectedWork() {
+		if len(only) > 0 && !only[item.Item.RatingKey] {
+			continue
+		}
+		if off[item.Item.RatingKey] {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // filterItems applies the run's section, filter and limit options.

@@ -47,6 +47,11 @@ Intro and Skip Credits buttons appear without any local analysis.
 - **Alternate sources fill the gaps.** Chapter names Plex already extracted, and
   optional local detection, cover items TheIntroDB does not have yet. They can
   never override TheIntroDB for a segment type it answered.
+- **A large library finishes, a day at a time.** An item that has been looked up
+  is remembered, so it is never asked about twice. A run spends the day's
+  request allowance on the items it has never seen, stops when that is used up,
+  and the next run carries on from the same place. A library of tens of thousands
+  of items converges over a few days instead of re-asking forever.
 
 ---
 
@@ -248,7 +253,7 @@ Run `plex-sync` with no arguments in a terminal and you get the interface:
 | --- | --- |
 | `1` | Status: what is in the library, what the ledger recorded, API quota |
 | `2` | Library: every matched item with its ids, sources and marker state |
-| `3` | Plan: exactly what a run would change, before it changes anything |
+| `3` | Plan: exactly what a run would change. Up/down moves, space turns an item on or off, `A`/`N` select all or none, `R` marks one for a re-scan |
 | `4` | Runs: history, and the undo journals from previous applies |
 | `5` | Settings: every setting, editable in place with the arrow keys and enter |
 | `?` | Help |
@@ -266,6 +271,8 @@ plex-sync config check          # validate configuration and reach both services
 plex-sync library               # list items and the names Plex uses, for --show
 plex-sync preview --show "the last of us"   # what a run would change, for one show
 plex-sync preview --save preview.json  # ...and save it, to write later without Plex
+plex-sync preview --deselect 1234      # leave a rating key out of the write
+plex-sync preview --rescan tmdb:1399:1:1   # ask about one item again
 plex-sync apply --yes           # write the markers (--dry-run to see them first)
 plex-sync apply --preview preview.json --yes   # write a saved preview, without Plex
 plex-sync undo latest --yes     # revert the most recent run
@@ -297,6 +304,40 @@ database. If you would rather your own scheduler owned it, `sync --yes` and
 
 See [docs/scheduling.md](docs/scheduling.md) for systemd, launchd, Task
 Scheduler, cron and container arrangements.
+
+### Large libraries
+
+TheIntroDB allows 1000 requests per UTC day with an API key, and 500 without one.
+A library of tens of thousands of items cannot be scanned in a day, so the tool
+is built to be left running rather than to be finished in one pass:
+
+- **An item is scanned once.** Every lookup is recorded, and a recorded item is
+  answered from the ledger afterwards without a request, however long ago it was
+  scanned. Expiring that record is what would make a large library never finish,
+  so nothing expires it.
+- **A run uses the whole day's allowance.** It scans the items it has never seen
+  until the allowance is spent, then stops cleanly and logs how many are left.
+  That is not an error, and the nightly timer keeps its schedule.
+- **The next run continues.** Because every scan is recorded, it picks up exactly
+  where the last one stopped. A 40,000-item library at 1000 requests a day
+  converges in about 40 days, and each run writes the markers it has data for.
+- **Re-scanning is deliberate.** Nothing is asked about twice on a timer. When a
+  submission lands and you want fresh answers, name the items:
+
+```bash
+# One item, by its lookup key (the same key the Library screen shows):
+plex-sync sync --yes --rescan tmdb:1399:1:1
+
+# Everything, at the cost of a full library of requests:
+plex-sync sync --yes --rescan-all
+```
+
+In the interface, press `p` for a plan, move with the arrow keys, and press `R`
+on the item you want re-scanned; planning again is what asks for it. `space`
+turns an item off, which leaves it in the plan but out of the write.
+
+`plex-sync status` reports how many items have been scanned and how they split,
+which is the number that says how far through the library the tool has got.
 
 ---
 

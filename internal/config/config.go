@@ -84,9 +84,14 @@ type TheIntroDB struct {
 	// pacing at 25 leaves room for the request that lands while one is in flight.
 	MaxPerWindow int     `toml:"max_per_window"`
 	WindowS      float64 `toml:"window_s"`
-	// MissTTLDays is how long a cached "no data" answer is trusted.
+	// MissTTLDays is how long a cached "no data" body is trusted. It expires the
+	// body, not the record that the item was scanned: a 404 becomes a 200 the
+	// moment someone submits the timing, but asking about the item again is a
+	// re-scan rather than something time does on its own.
 	MissTTLDays int `toml:"miss_ttl_days"`
-	// HitTTLDays is how long a cached answer is trusted before a refresh.
+	// HitTTLDays is how long a cached answer body is trusted. As with the miss
+	// TTL, this no longer decides when a request is made: an item that has been
+	// scanned at all is answered from the ledger whatever this says.
 	HitTTLDays int `toml:"hit_ttl_days"`
 }
 

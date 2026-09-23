@@ -95,6 +95,9 @@ type Model struct {
 
 	// listOffset scrolls the library and plan lists.
 	listOffset int
+	// planCursor is the row the preview screen's selection is on, as an index
+	// into the plan's work.
+	planCursor int
 
 	// pending counts the loads the current busy stage is waiting for, and busy
 	// names that stage. A refresh is two loads (the ledger and the services),
@@ -209,6 +212,10 @@ func (m *Model) loadInventory() tea.Cmd {
 // runPlan plans. It reports progress into the program so the interface stays
 // responsive: a plan is one lookup per item, which is minutes of work on a
 // large library.
+//
+// Items marked for a re-scan on the preview screen are carried into the plan, so
+// pressing p again is what makes a marked item actually be asked about again:
+// nothing is re-scanned on its own.
 func (m *Model) runPlan() tea.Cmd {
 	return func() tea.Msg {
 		opts := sync.Options{
@@ -220,6 +227,9 @@ func (m *Model) runPlan() tea.Cmd {
 					m.program.Send(progressMsg{event: event})
 				}
 			},
+		}
+		if m.result != nil && m.result.Plan.Selection != nil {
+			opts.Rescan = append(opts.Rescan, m.result.Plan.Selection.Rescan...)
 		}
 		result, err := m.runner.Plan(m.ctx, opts)
 		return planMsg{result: result, err: err}
@@ -237,6 +247,11 @@ func (m *Model) runApply() tea.Cmd {
 			Filter:   m.opts.Filter,
 			Limit:    m.opts.Limit,
 			Progress: func(event sync.Event) { m.sendProgress(event) },
+		}
+		// Only the items left on are written. The plan says what could change,
+		// the preview screen's selection says what was agreed to.
+		if selection := m.result.Plan.Selection; selection != nil {
+			opts.Deselected = append(opts.Deselected, selection.Unselected...)
 		}
 		err := m.runner.Apply(m.ctx, m.result, opts)
 		return applyMsg{result: m.result, err: err}
@@ -333,7 +348,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = msg.result
 		m.screen = screenPlan
 		m.listOffset = 0
-		m.setStatus(fmt.Sprintf("plan ready: %d item(s) to change", len(m.result.Plan.Work())))
+		m.planCursor = 0
+		m.setStatus(fmt.Sprintf("plan ready: %d item(s) to change, %d selected",
+			len(m.result.Plan.Work()), len(m.result.Plan.SelectedWork())))
 		return m, m.loadStatus()
 
 	case applyMsg:
@@ -454,6 +471,38 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// On the preview screen the arrow keys move a cursor over the items and
+	// space turns the one under it on or off. That is what turns a plan from a
+	// report into a decision: only the items left on are written.
+	if m.screen == screenPlan && m.result != nil && m.planLen() > 0 {
+		switch msg.String() {
+		case "up", "k":
+			m.movePlanCursor(-1)
+			return m, nil
+		case "down", "j":
+			m.movePlanCursor(1)
+			return m, nil
+		case "home", "g":
+			m.setPlanCursor(0)
+			return m, nil
+		case "end", "G":
+			m.setPlanCursor(m.planLen() - 1)
+			return m, nil
+		case " ", "enter":
+			m.togglePlanItem()
+			return m, nil
+		case "A":
+			m.selectPlanItems(true)
+			return m, nil
+		case "N":
+			m.selectPlanItems(false)
+			return m, nil
+		case "R":
+			m.togglePlanRescan()
+			return m, nil
+		}
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quit = true
@@ -494,7 +543,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setStatus("planning: this makes one lookup per item, so it can take a while")
 		return m, m.runPlan()
 	case "a":
-		if m.result == nil || len(m.result.Plan.Work()) == 0 {
+		if m.result == nil || len(m.result.Plan.SelectedWork()) == 0 {
 			m.setError(fmt.Errorf("nothing to apply: press p to plan first"))
 			return m, nil
 		}
@@ -524,11 +573,121 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.listOffset = 0
 		return m, nil
 	case "?":
-		m.setStatus("1-5 screens, tab next, r refresh, l library, p plan, a apply, u undo, " +
+		m.setStatus("1-5 screens, tab next, r refresh, l library, p plan, a apply, u undo; " +
+			"on Preview: up/down move, space select, A all, N none, R re-scan; " +
 			"on Settings: up/down move, enter change, q quit")
 		return m, nil
 	}
 	return m, nil
+}
+
+// --- the preview screen's selection ----------------------------------------
+
+// planLen is how many rows the preview screen has to move over.
+func (m *Model) planLen() int {
+	if m.result == nil {
+		return 0
+	}
+	return len(m.result.Plan.Work())
+}
+
+// setPlanCursor moves the preview cursor to a row and keeps it on screen.
+func (m *Model) setPlanCursor(index int) {
+	n := m.planLen()
+	if n == 0 {
+		m.planCursor = 0
+		return
+	}
+	if index < 0 {
+		index = 0
+	}
+	if index >= n {
+		index = n - 1
+	}
+	m.planCursor = index
+	m.keepPlanCursorVisible(n)
+}
+
+// movePlanCursor steps the preview cursor by delta, stopping at either end
+// rather than wrapping, so a held key cannot run away from the row in view.
+func (m *Model) movePlanCursor(delta int) {
+	m.setPlanCursor(m.planCursor + delta)
+}
+
+// keepPlanCursorVisible scrolls the list so the selected row is on the page.
+func (m *Model) keepPlanCursorVisible(n int) {
+	size := m.pageSize()
+	if m.planCursor < m.listOffset {
+		m.listOffset = m.planCursor
+	}
+	if m.planCursor >= m.listOffset+size {
+		m.listOffset = m.planCursor - size + 1
+	}
+	m.clampOffset(n)
+}
+
+// togglePlanItem turns the item under the cursor on or off. An item that is off
+// stays in the preview and is simply not written, so nothing is hidden.
+func (m *Model) togglePlanItem() {
+	work := m.result.Plan.Work()
+	if m.planCursor < 0 || m.planCursor >= len(work) {
+		return
+	}
+	ratingKey := work[m.planCursor].Item.RatingKey
+	selection := m.result.Plan.EnsureSelection()
+	selection.Select(ratingKey, !selection.Selected(ratingKey))
+	m.recountPlan()
+}
+
+// selectPlanItems turns every item in the plan on or off.
+func (m *Model) selectPlanItems(selected bool) {
+	if m.result == nil {
+		return
+	}
+	selection := m.result.Plan.EnsureSelection()
+	for _, item := range m.result.Plan.Work() {
+		selection.Select(item.Item.RatingKey, selected)
+	}
+	m.recountPlan()
+}
+
+// togglePlanRescan marks the item under the cursor to be asked about again.
+//
+// The mark takes effect on the next plan, because that is when lookups happen:
+// the status line says so rather than implying the answer has already changed.
+func (m *Model) togglePlanRescan() {
+	work := m.result.Plan.Work()
+	if m.planCursor < 0 || m.planCursor >= len(work) {
+		return
+	}
+	item := work[m.planCursor]
+	key, ok := item.Item.LookupKey()
+	if !ok {
+		m.setError(fmt.Errorf("%s has no TMDb, IMDb or TVDb id, so it cannot be looked up",
+			item.Item.Label()))
+		return
+	}
+	selection := m.result.Plan.EnsureSelection()
+	marked := !selection.RescanKeys()[key]
+	selection.MarkRescan(key, marked)
+	if marked {
+		m.setStatus(fmt.Sprintf("marked %s for a re-scan: press p to plan again and ask for it",
+			item.Item.Label()))
+		return
+	}
+	m.setStatus(fmt.Sprintf("%s will not be re-scanned", item.Item.Label()))
+}
+
+// recountPlan reports how much of the plan is still selected.
+func (m *Model) recountPlan() {
+	work := m.result.Plan.Work()
+	selected := len(m.result.Plan.SelectedWork())
+	if leftOut := len(work) - selected; leftOut > 0 {
+		m.setStatus(fmt.Sprintf("%d of %d item(s) selected, %d left out",
+			selected, len(work), leftOut))
+		return
+	}
+	m.setStatus(fmt.Sprintf("all %d item(s) selected", len(work)))
 }
 
 // --- small helpers ---------------------------------------------------------

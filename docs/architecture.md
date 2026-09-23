@@ -71,8 +71,8 @@ expects, and the safety rules that come with editing a live database.
 | `internal/model` | the shared data types | nothing |
 | `internal/plexapi` | enumerate libraries, read ids, chapters and existing markers | Plex HTTP |
 | `internal/plexdb` | read and write markers, back up, undo | Plex SQLite |
-| `internal/tidb` | TheIntroDB client: pacing, budget, cache, null times | TheIntroDB HTTP |
-| `internal/ledger` | durable state: lookup cache, what we wrote, run history | our SQLite |
+| `internal/tidb` | TheIntroDB client: pacing, budget, scan records, null times | TheIntroDB HTTP |
+| `internal/ledger` | durable state: scan records, lookup cache, what we wrote, run history | our SQLite |
 | `internal/planner` | merge sources, map types, resolve ranges, decide the change set | nothing |
 | `internal/source` | markers from chapter names Plex extracted, and local detection for the rest | `plexapi` output, ffmpeg + fpcalc |
 | `internal/schedule` | the cron subset the process holds its own timer with | nothing |
@@ -110,6 +110,37 @@ never override it for a segment type it already answered:
 A segment type is won by the first enabled source that has it, and each written
 marker records which source produced it, so the status page and the plan output
 can always answer "where did this timing come from".
+
+## Scanning a large library
+
+Two different questions get answered by two different pieces of ledger state,
+and keeping them apart is what makes a library of tens of thousands of items
+finish:
+
+- **"Do we still trust this body?"** — the lookup cache (`lookups`), with a TTL.
+  A 200 is cached for `theintrodb.hit_ttl_days` and a 404 for
+  `theintrodb.miss_ttl_days`, because a 404 becomes a 200 the moment someone
+  submits the timing.
+- **"Have we spent a request on this item at all?"** — the scan record
+  (`scans`), with no expiry. A record means the item has been looked up, and a
+  lookup that finds one is answered from the cache without a request.
+
+The second is what a large library runs on. Time alone never causes a request:
+`LookupForced` is the only thing that asks about a scanned item again, and that
+is reached by naming an item for a re-scan (`--rescan`, `--rescan-all`, or `R`
+on the Preview screen). Expiring the scan record would put the library back to
+re-asking it forever and never finishing.
+
+When the day's allowance is spent the client refuses the next request, and
+`internal/sync` treats that as a stopping point rather than an error: the run
+ends, records the number of items still to scan, and the next run begins where
+it left off. The nightly timer therefore makes progress every night instead of
+failing every night.
+
+A plan also carries a `Selection`: the items turned off, and the items named for
+a re-scan. It is recorded in the plan file so a plan made on a host and applied
+in a container writes the same subset, and so the interface's selection is a
+decision the writer honours rather than a note the writer ignores.
 
 ## Idempotence and provenance
 

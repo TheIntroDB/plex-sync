@@ -43,7 +43,7 @@ func TestOpenCreatesSchema(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	for _, want := range []string{"applied", "lookups", "requests", "runs", "schema_version"} {
+	for _, want := range []string{"applied", "lookups", "requests", "runs", "schema_version", "scans"} {
 		if !got[want] {
 			t.Errorf("table %q missing, have %v", want, got)
 		}
@@ -202,6 +202,116 @@ func TestForgetLookupAndPurgeExpired(t *testing.T) {
 	}
 	if _, found := l.Lookup("tmdb:3:movie"); found {
 		t.Error("the expired entry survived the purge")
+	}
+}
+
+func TestOpeningAnOlderLedgerAddsTheScanTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ledger.db")
+
+	l, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	// Make the file look like one written before the scan records existed.
+	if _, err := l.db.Exec(`DROP TABLE scans`); err != nil {
+		t.Fatalf("drop scans: %v", err)
+	}
+	if _, err := l.db.Exec(`UPDATE schema_version SET version = 1`); err != nil {
+		t.Fatalf("age the schema version: %v", err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Opening it again is the migration: nothing else has to be run.
+	upgraded, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = upgraded.Close() })
+
+	if err := upgraded.RecordScan("tmdb:1:movie", 200, "movie"); err != nil {
+		t.Fatalf("RecordScan on an upgraded ledger: %v", err)
+	}
+	if !upgraded.Scanned("tmdb:1:movie") {
+		t.Error("the scan record did not survive being written")
+	}
+	var version int
+	if err := upgraded.db.QueryRow(`SELECT version FROM schema_version`).Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != schemaVersion {
+		t.Errorf("schema version after opening an older file = %d, want %d", version, schemaVersion)
+	}
+}
+
+func TestScanRecordsLifecycle(t *testing.T) {
+	l := openTest(t)
+
+	if l.Scanned("tmdb:1:movie") {
+		t.Error("an item was reported as scanned before it was")
+	}
+	if _, found := l.Scan("tmdb:1:movie"); found {
+		t.Error("Scan found a record that was never written")
+	}
+
+	if err := l.RecordScan("tmdb:1:movie", 200, "movie"); err != nil {
+		t.Fatalf("RecordScan: %v", err)
+	}
+	if err := l.RecordScan("tmdb:2:1:4", 404, "episode"); err != nil {
+		t.Fatalf("RecordScan: %v", err)
+	}
+	if err := l.RecordScan("", 200, "movie"); err == nil {
+		t.Error("RecordScan with an empty key should fail")
+	}
+
+	got, found := l.Scan("tmdb:1:movie")
+	if !found {
+		t.Fatal("the scan record was not stored")
+	}
+	if got.Status != 200 || got.Kind != "movie" || !got.ScannedAt.Equal(fakeNow) {
+		t.Errorf("scan record = %+v, want status 200, kind movie, stamped now", got)
+	}
+
+	total, withData, noData, err := l.ScanCounts()
+	if err != nil {
+		t.Fatalf("ScanCounts: %v", err)
+	}
+	if total != 2 || withData != 1 || noData != 1 {
+		t.Errorf("ScanCounts = %d/%d/%d, want 2 total, 1 with data, 1 without", total, withData, noData)
+	}
+
+	stats, err := l.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.Scanned != 2 || stats.ScannedWithData != 1 || stats.ScannedNoData != 1 {
+		t.Errorf("Stats scanned = %d/%d/%d, want 2/1/1",
+			stats.Scanned, stats.ScannedWithData, stats.ScannedNoData)
+	}
+
+	// Recording again refreshes what is known about the item rather than
+	// adding a second row: a re-scan that finds data replaces the no-data.
+	if err := l.RecordScan("tmdb:2:1:4", 200, "episode"); err != nil {
+		t.Fatalf("RecordScan: %v", err)
+	}
+	if got, _ := l.Scan("tmdb:2:1:4"); got.Status != 200 {
+		t.Errorf("status after re-scanning = %d, want 200", got.Status)
+	}
+	if total, _, _, _ := l.ScanCounts(); total != 2 {
+		t.Errorf("total after a re-scan = %d, want 2: re-scanning must not duplicate a row", total)
+	}
+
+	// Forgetting one is what asking for a single item to be looked up again
+	// leaves behind.
+	if err := l.ForgetScan("tmdb:1:movie"); err != nil {
+		t.Fatalf("ForgetScan: %v", err)
+	}
+	if l.Scanned("tmdb:1:movie") {
+		t.Error("ForgetScan left the record behind")
+	}
+	if total, _, _, _ := l.ScanCounts(); total != 1 {
+		t.Errorf("total after forgetting = %d, want 1", total)
 	}
 }
 

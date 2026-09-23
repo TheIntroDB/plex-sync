@@ -1,5 +1,5 @@
-// Package tidb is the TheIntroDB API client: lookups, the response cache, the
-// request pacing and the daily budget.
+// Package tidb is the TheIntroDB API client: lookups, the scan record, the
+// response cache, the request pacing and the daily budget.
 //
 // It goes through internal/httpclient (Fiber's client) for every outbound call,
 // and through internal/ledger for every piece of durable state, so this package
@@ -81,6 +81,10 @@ const (
 	ReasonMiss = "miss"
 	// ReasonNoData: TheIntroDB has nothing for this item (HTTP 404).
 	ReasonNoData = "no-data"
+	// ReasonScanned: the item had already been scanned, so the stored answer
+	// was used and no request was made. It is what a run over a large library
+	// spends most of its time reporting: the items it has already covered.
+	ReasonScanned = "scanned"
 	// ReasonBudget: the daily request budget is spent, so no request was made.
 	ReasonBudget = "budget"
 	// ReasonRateLimit: the server rate-limited the request (HTTP 429).
@@ -135,6 +139,20 @@ func IsTerminal(err error) bool {
 	return errors.As(err, &e) && e.IsTerminal()
 }
 
+// IsBudgetError reports whether err is the day's allowance refusing a request,
+// either because the ledger's own count reached the budget or because the
+// server said the allowance was spent.
+//
+// A scan treats it as a stopping point rather than a failure: the allowance is
+// spent, the item was not looked up, and the next run continues from here.
+func IsBudgetError(err error) bool {
+	var e *Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	return e.Kind == KindBudget || e.Kind == KindUsageLimit
+}
+
 // Usage is the request accounting the status screen shows.
 type Usage struct {
 	// Requests is every API request this process made.
@@ -143,6 +161,10 @@ type Usage struct {
 	Lookups int `json:"lookups"`
 	// CacheHits is the lookups answered from the ledger with no network call.
 	CacheHits int `json:"cache_hits"`
+	// Skipped is the lookups answered because the item had already been
+	// scanned at some point. It is the part of CacheHits that a large library
+	// is made of: the items a run does not have to ask about again.
+	Skipped int `json:"skipped"`
 	// Data is the lookups TheIntroDB answered with segments.
 	Data int `json:"data"`
 	// NoData is the lookups TheIntroDB answered 404.
@@ -189,6 +211,7 @@ type Client struct {
 	requests     int
 	lookups      int
 	cacheHits    int
+	skipped      int
 	data         int
 	noData       int
 	rateLimited  int
@@ -475,6 +498,7 @@ func (c *Client) Usage() Usage {
 		Requests:       c.requests,
 		Lookups:        c.lookups,
 		CacheHits:      c.cacheHits,
+		Skipped:        c.skipped,
 		Data:           c.data,
 		NoData:         c.noData,
 		RateLimited:    c.rateLimited,

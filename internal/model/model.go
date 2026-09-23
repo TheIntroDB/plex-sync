@@ -347,6 +347,9 @@ type Plan struct {
 	Sources map[string]int `json:"sources"`
 	// Options echoes the planner settings the plan was built with.
 	Options PlanOptions `json:"options"`
+	// Selection records what was chosen about this plan: the items turned off,
+	// and the items to re-scan. Absent means everything, nothing re-scanned.
+	Selection *Selection `json:"selection,omitempty"`
 }
 
 // PlanOptions records the knobs a plan was produced with, so an old plan file
@@ -361,6 +364,91 @@ type PlanOptions struct {
 	Sources  []string `json:"sources"`
 }
 
+// Selection records what was chosen about a plan, as opposed to what the plan
+// found.
+//
+// A plan is a snapshot of a library; this is the decision taken on top of it.
+// It is stored with the plan so that a plan saved on a host and applied in a
+// container keeps the same answers, and so a large library can be worked through
+// a piece at a time.
+//
+// The empty value means "everything, and nothing re-scanned", which is what a
+// scheduled run wants when nobody has said otherwise. Both lists are therefore
+// exceptions rather than selections.
+type Selection struct {
+	// Unselected lists the rating keys to leave out of the write. An item that
+	// is off stays in the plan and stays visible on the preview screen; it is
+	// simply not applied.
+	Unselected []int `json:"unselected,omitempty"`
+	// Rescan lists lookup keys to ask TheIntroDB about again, whatever the
+	// record of earlier scans says. It is how an item that was scanned long ago
+	// gets a fresh answer: nothing expires on its own, so the only re-scan is
+	// the one asked for here.
+	Rescan []string `json:"rescan,omitempty"`
+}
+
+// Selected reports whether an item is part of what the plan should write.
+func (s *Selection) Selected(ratingKey int) bool {
+	if s == nil {
+		return true
+	}
+	for _, key := range s.Unselected {
+		if key == ratingKey {
+			return false
+		}
+	}
+	return true
+}
+
+// RescanKeys returns the lookup keys marked for a re-scan, as a set.
+func (s *Selection) RescanKeys() map[string]bool {
+	out := map[string]bool{}
+	if s == nil {
+		return out
+	}
+	for _, key := range s.Rescan {
+		out[key] = true
+	}
+	return out
+}
+
+// Select turns an item on or off. The list of exceptions is kept sorted and
+// free of duplicates, so two plans made the same way compare equal.
+func (s *Selection) Select(ratingKey int, selected bool) {
+	if s == nil {
+		return
+	}
+	kept := s.Unselected[:0]
+	for _, key := range s.Unselected {
+		if key != ratingKey {
+			kept = append(kept, key)
+		}
+	}
+	s.Unselected = kept
+	if !selected {
+		s.Unselected = append(s.Unselected, ratingKey)
+		sort.Ints(s.Unselected)
+	}
+}
+
+// MarkRescan adds or removes one lookup key from the re-scan list.
+func (s *Selection) MarkRescan(key string, rescan bool) {
+	if s == nil || strings.TrimSpace(key) == "" {
+		return
+	}
+	kept := s.Rescan[:0]
+	for _, existing := range s.Rescan {
+		if existing != key {
+			kept = append(kept, existing)
+		}
+	}
+	s.Rescan = kept
+	if rescan {
+		s.Rescan = append(s.Rescan, key)
+		sort.Strings(s.Rescan)
+	}
+}
+
 // Work returns the items that need a change.
 func (p Plan) Work() []ItemPlan {
 	var out []ItemPlan
@@ -370,6 +458,30 @@ func (p Plan) Work() []ItemPlan {
 		}
 	}
 	return out
+}
+
+// SelectedWork returns the items that need a change and are still selected.
+//
+// This is what a write acts on: the plan says what could change, the selection
+// says what was agreed to. With no selection recorded it is the same as Work.
+func (p Plan) SelectedWork() []ItemPlan {
+	var out []ItemPlan
+	for _, it := range p.Work() {
+		if p.Selection.Selected(it.Item.RatingKey) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// EnsureSelection returns the plan's selection, creating an empty one when the
+// plan has none, so a caller can record a choice on a plan that had no
+// exceptions yet.
+func (p *Plan) EnsureSelection() *Selection {
+	if p.Selection == nil {
+		p.Selection = &Selection{}
+	}
+	return p.Selection
 }
 
 // SortByLabel orders items by their display label, for stable output.

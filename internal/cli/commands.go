@@ -29,6 +29,14 @@ func addRunFlags(cmd *cobra.Command, opts *sync.Options) {
 	flags.IntSliceVar(&opts.Sections, "section", nil, "limit to these Plex library section keys")
 	flags.StringVar(&opts.Filter, "show", "", "only items whose title contains this text")
 	flags.IntVar(&opts.Limit, "limit", 0, "examine at most this many items")
+	flags.StringSliceVar(&opts.Rescan, "rescan", nil,
+		"ask TheIntroDB about this item again, by lookup key (tmdb:1234:2:5); repeatable")
+	flags.BoolVar(&opts.RescanAll, "rescan-all", false,
+		"ask about every item again, even ones already scanned (costs a full library of requests)")
+	flags.IntSliceVar(&opts.Only, "select", nil,
+		"write only these Plex rating keys; repeatable")
+	flags.IntSliceVar(&opts.Deselected, "deselect", nil,
+		"leave these Plex rating keys out of the write; repeatable")
 	flags.BoolVar(&opts.DryRun, "dry-run", false, "report what would happen without writing")
 	flags.BoolVar(&opts.PlexStopped, "plex-stopped", false, "assert that Plex is stopped")
 	flags.BoolVar(&opts.SkipSessionCheck, "skip-session-check", false, "skip the active session check")
@@ -315,9 +323,14 @@ writes nothing and exits non-zero rather than doing something surprising.`),
 				return encoder.Encode(res)
 			}
 			out := stdout(cmd)
-			fmt.Fprintf(out, "examined %d item(s), %d with data, %d without, %d lookup(s), %d cached\n",
+			fmt.Fprintf(out, "examined %d item(s), %d with data, %d without, %d already scanned, %d lookup(s), %d cached\n",
 				res.Survey.Items, res.Survey.WithData, res.Survey.NoData,
-				res.Survey.Lookups, res.Survey.Cached)
+				res.Survey.Skipped, res.Survey.Lookups, res.Survey.Cached)
+			if res.Survey.Paused {
+				fmt.Fprintf(out,
+					"paused: the day's request allowance is spent; %d item(s) still to scan, "+
+						"the next run continues from here\n", res.Survey.Remaining)
+			}
 			if res.Applied {
 				fmt.Fprintf(out, "wrote %d marker(s) across %d item(s), removed %d, skipped %d\n",
 					res.Stats.Added, res.Stats.Written, res.Stats.Removed, res.Stats.Skipped)
@@ -434,6 +447,8 @@ func newStatusCmd(g *globals) *cobra.Command {
 			fmt.Fprintf(out, "ledger            %s\n", stats.DatabasePath)
 			fmt.Fprintf(out, "lookups           %d (%d hits, %d misses)\n",
 				stats.Lookups, stats.LookupHits, stats.LookupMisses)
+			fmt.Fprintf(out, "scanned           %d item(s) (%d with data, %d without); these are never asked about again unless a re-scan is asked for\n",
+				stats.Scanned, stats.ScannedWithData, stats.ScannedNoData)
 			fmt.Fprintf(out, "markers recorded  %d across %d item(s)\n",
 				stats.AppliedMarkers, stats.AppliedItems)
 			fmt.Fprintf(out, "requests today    %d of %d",
@@ -468,8 +483,13 @@ func newStatusCmd(g *globals) *cobra.Command {
 
 func printPlan(cmd *cobra.Command, res *sync.Result, show int) {
 	out := stdout(cmd)
-	fmt.Fprintf(out, "would change %d item(s) from %d examined: %d with data, %d without\n",
-		res.Survey.Planned, res.Survey.Items, res.Survey.WithData, res.Survey.NoData)
+	fmt.Fprintf(out, "would change %d item(s) from %d examined: %d with data, %d without, %d already scanned\n",
+		res.Survey.Planned, res.Survey.Items, res.Survey.WithData, res.Survey.NoData, res.Survey.Skipped)
+	if res.Survey.Paused {
+		fmt.Fprintf(out,
+			"paused: the day's request allowance is spent; %d item(s) still to scan, "+
+				"the next run continues from here\n", res.Survey.Remaining)
+	}
 
 	reasons := make([]string, 0, len(res.Survey.SkipReasons))
 	for reason := range res.Survey.SkipReasons {
