@@ -49,6 +49,24 @@ unauthenticated, so it says nothing about the token, and it is a small answer, s
 it says nothing about whether a library-sized one can be served. A rejected token
 answers 401 immediately rather than timing out.
 
+## "could not read the shows behind the episodes; they keep their own ids"
+
+The run could not read the show behind each episode out of the Plex database, so
+every episode keeps the provider id in its own row. That id is the episode's, and
+TheIntroDB is asked for an episode by series id, so those lookups answer "media
+not found" — the run spends its allowance on questions that cannot succeed, and
+no TV markers are written. It is one WARN line and no other symptom, which is why
+it is worth reading.
+
+The known cause was a library larger than SQLite's bound-parameter limit: the
+walk bound one parameter per episode in a single statement, and above 32,766
+(`SQLITE_MAX_VARIABLE_NUMBER`) the statement failed outright with `too many SQL
+variables`. The walk is chunked now, so a library of any size reads.
+
+The other causes are ordinary: no read access to the database, or episodes whose
+show rows carry no provider ids. Check what `plex-sync library` prints for the
+ids an item would be looked up with.
+
 ## "no-provider-id"
 
 The item has no TMDb, IMDb or Tvdb id, so there is nothing to look it up by.
