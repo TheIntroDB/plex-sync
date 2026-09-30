@@ -22,6 +22,51 @@ not submit anything, so there is no `submit` command. If you want to contribute 
 timing you know, do it on [theintrodb.org](https://theintrodb.org), which is
 where contributions are made.
 
+## "read the Plex library: ... timeout or cancel"
+
+The request that reads a library section did not come back inside
+`plex.timeout_s` (20 seconds by default).
+
+The library read is paged, the first request included, so no single request asks
+Plex to build a response proportional to the size of the section. On a build
+older than that fix the first request was unpaged, and Plex answered it by
+assembling the whole section at once — which on a section of tens of thousands
+of episodes outlives any sensible timeout. Raising `plex.timeout_s` was the
+workaround then:
+
+```toml
+[plex]
+timeout_s = 120
+```
+
+It still works as a workaround, but it is no longer the fix, and it is worth
+checking that the failing request is the section read before reaching for it: a
+timeout on `/library/metadata/<key>` is a different problem.
+
+`/identity` answering — which is what `setup` and `config check` report as `plex
+server ok` — proves only that the URL reaches a Plex server. It is
+unauthenticated, so it says nothing about the token, and it is a small answer, so
+it says nothing about whether a library-sized one can be served. A rejected token
+answers 401 immediately rather than timing out.
+
+## "could not read the shows behind the episodes; they keep their own ids"
+
+The run could not read the show behind each episode out of the Plex database, so
+every episode keeps the provider id in its own row. That id is the episode's, and
+TheIntroDB is asked for an episode by series id, so those lookups answer "media
+not found" — the run spends its allowance on questions that cannot succeed, and
+no TV markers are written. It is one WARN line and no other symptom, which is why
+it is worth reading.
+
+The known cause was a library larger than SQLite's bound-parameter limit: the
+walk bound one parameter per episode in a single statement, and above 32,766
+(`SQLITE_MAX_VARIABLE_NUMBER`) the statement failed outright with `too many SQL
+variables`. The walk is chunked now, so a library of any size reads.
+
+The other causes are ordinary: no read access to the database, or episodes whose
+show rows carry no provider ids. Check what `plex-sync library` prints for the
+ids an item would be looked up with.
+
 ## "no-provider-id"
 
 The item has no TMDb, IMDb or Tvdb id, so there is nothing to look it up by.

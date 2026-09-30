@@ -527,6 +527,197 @@ func TestItemsPaging(t *testing.T) {
 	}
 }
 
+// TestItemsFirstRequestIsPaged pins the fix for a library that times out before
+// it is read: an unpaged /all makes Plex assemble the whole section, and on a
+// section of tens of thousands of episodes that answer outlives the client's
+// timeout. The fake below behaves the way a real server does — it answers an
+// unpaged request slowly and a paged one immediately — so the old code fails
+// here with "timeout or cancel" and this one does not.
+func TestItemsFirstRequestIsPaged(t *testing.T) {
+	t.Parallel()
+	const total = 500
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections/7/all" {
+			writeJSON(w, http.StatusOK,
+				`{"MediaContainer":{"size":1,"Directory":[{"key":"7","title":"TV","type":"show"}]}}`)
+			return
+		}
+		raw := r.Header.Get("X-Plex-Container-Size")
+		if raw == "" {
+			// Unpaged: Plex builds the entire section, which is the request
+			// that never returns in time on a large library.
+			time.Sleep(2 * time.Second)
+			writeJSON(w, http.StatusOK, sectionPage(0, total, total))
+			return
+		}
+		start, _ := strconv.Atoi(r.Header.Get("X-Plex-Container-Start"))
+		size, _ := strconv.Atoi(raw)
+		if size <= 0 {
+			size = ItemWindow
+		}
+		writeJSON(w, http.StatusOK, sectionPage(start, size, total))
+	}
+
+	f := newFake(t, handler)
+	hc := httpclient.New(300*time.Millisecond, false, UserAgent)
+	t.Cleanup(hc.Close)
+	c := NewClient(config.Plex{URL: f.srv.URL, Token: fakeToken}, hc)
+
+	items, err := c.Items(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Items: %v (the first request was not paged)", err)
+	}
+	if len(items) != total {
+		t.Fatalf("Items = %d entries, want %d", len(items), total)
+	}
+	for i, it := range items {
+		if it.RatingKey != 900+i {
+			t.Fatalf("items[%d].RatingKey = %d, want %d", i, it.RatingKey, 900+i)
+		}
+	}
+}
+
+// TestItemsPagingWithoutTotal covers a server that reports no total, which is
+// the one case where the page size is the only thing that says the walk is over.
+func TestItemsPagingWithoutTotal(t *testing.T) {
+	t.Parallel()
+	const total = ItemWindow + 7
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections/7/all" {
+			writeJSON(w, http.StatusOK,
+				`{"MediaContainer":{"size":1,"Directory":[{"key":"7","title":"TV","type":"show"}]}}`)
+			return
+		}
+		start, _ := strconv.Atoi(r.Header.Get("X-Plex-Container-Start"))
+		size, _ := strconv.Atoi(r.Header.Get("X-Plex-Container-Size"))
+		if size <= 0 {
+			size = ItemWindow
+		}
+		writeJSON(w, http.StatusOK, sectionPageNoTotal(start, size, total))
+	}
+
+	f := newFake(t, handler)
+	c := f.client(t)
+
+	items, err := c.Items(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Items: %v", err)
+	}
+	if len(items) != total {
+		t.Fatalf("Items = %d entries, want %d", len(items), total)
+	}
+}
+
+// TestItemsPagingServerThatCapsThePage covers a server that answers with fewer
+// items than the size asked for and reports no total. The page size must not end
+// the walk: doing so would return a fraction of the library and look like a
+// successful read, which is worse than the timeout the paging exists to avoid.
+func TestItemsPagingServerThatCapsThePage(t *testing.T) {
+	t.Parallel()
+	const (
+		total  = 7
+		server = 2 // what this server will hand over per request
+	)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections/7/all" {
+			writeJSON(w, http.StatusOK,
+				`{"MediaContainer":{"size":1,"Directory":[{"key":"7","title":"TV","type":"show"}]}}`)
+			return
+		}
+		start, _ := strconv.Atoi(r.Header.Get("X-Plex-Container-Start"))
+		writeJSON(w, http.StatusOK, sectionPageNoTotal(start, server, total))
+	}
+
+	f := newFake(t, handler)
+	c := f.client(t)
+
+	items, err := c.Items(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Items: %v", err)
+	}
+	if len(items) != total {
+		t.Fatalf("Items = %d entries, want %d: a capped page ended the walk early", len(items), total)
+	}
+	for i, it := range items {
+		if it.RatingKey != 900+i {
+			t.Fatalf("items[%d].RatingKey = %d, want %d", i, it.RatingKey, 900+i)
+		}
+	}
+}
+
+// TestItemsServerThatIgnoresPaging terminates and does not duplicate when the
+// server answers every request with the whole section, which is what a server
+// with no container support looks like.
+func TestItemsServerThatIgnoresPaging(t *testing.T) {
+	t.Parallel()
+	const total = 3
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections/7/all" {
+			writeJSON(w, http.StatusOK,
+				`{"MediaContainer":{"size":1,"Directory":[{"key":"7","title":"TV","type":"show"}]}}`)
+			return
+		}
+		writeJSON(w, http.StatusOK, sectionPage(0, total, total))
+	}
+
+	f := newFake(t, handler)
+	c := f.client(t)
+
+	items, err := c.Items(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Items: %v", err)
+	}
+	if len(items) != total {
+		t.Fatalf("Items = %d entries, want %d with no duplicates", len(items), total)
+	}
+}
+
+// sectionPage renders a page of a section that reports its total.
+func sectionPage(start, size, total int) string {
+	if start < 0 || start > total {
+		start = total
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	return page(start, end, total, true)
+}
+
+// sectionPageNoTotal renders a page from a server that reports no total.
+func sectionPageNoTotal(start, size, total int) string {
+	if start < 0 || start > total {
+		start = total
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	return page(start, end, total, false)
+}
+
+func page(start, end, total int, withTotal bool) string {
+	var sb strings.Builder
+	sb.WriteString(`{"MediaContainer":{"size":`)
+	fmt.Fprintf(&sb, "%d", end-start)
+	if withTotal {
+		fmt.Fprintf(&sb, `,"total":%d`, total)
+	}
+	sb.WriteString(`,"Metadata":[`)
+	for i := start; i < end; i++ {
+		if i > start {
+			sb.WriteString(",")
+		}
+		fmt.Fprintf(&sb, `{"ratingKey":%d,"type":"movie","title":"Movie %d"}`, 900+i, i)
+	}
+	sb.WriteString(`]}}`)
+	return sb.String()
+}
+
 func TestChapters(t *testing.T) {
 	t.Parallel()
 	f := newFake(t, plexHandler)

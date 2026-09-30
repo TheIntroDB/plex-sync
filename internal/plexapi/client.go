@@ -242,8 +242,15 @@ func (c *Client) Items(ctx context.Context, sectionKeys []int) ([]model.LibraryI
 	return out, nil
 }
 
-// sectionItems reads one section, following Plex's container paging when the
-// server reports more items than the first answer carried.
+// sectionItems reads one section, a page at a time.
+//
+// Every request carries the container headers, the first one included. Plex
+// answers an unpaged /all with the whole section, and on a library of tens of
+// thousands of episodes that single answer is the request that never finishes:
+// the server is still assembling it when the client's timeout expires, which
+// surfaces as "timeout or cancel" on a library that is perfectly healthy. The
+// first request is therefore bounded like every other one, so nothing ever asks
+// Plex to build a response proportional to the library.
 func (c *Client) sectionItems(ctx context.Context, key, metadataType int, kind model.Kind) ([]model.LibraryItem, error) {
 	path := "/library/sections/" + strconv.Itoa(key) + "/all"
 	query := url.Values{
@@ -251,14 +258,9 @@ func (c *Client) sectionItems(ctx context.Context, key, metadataType int, kind m
 		"includeGuids": {"1"},
 	}
 
-	ctr, err := c.container(ctx, path, query, nil)
-	if err != nil {
-		return nil, err
-	}
-	out := parseItems(*ctr, kind)
-	total := ctr.MediaContainer.Total.Int()
-
-	for start := len(out); total > 0 && start < total; {
+	var out []model.LibraryItem
+	seen := make(map[int]bool)
+	for start := 0; ; {
 		extra := map[string]string{
 			"X-Plex-Container-Start": strconv.Itoa(start),
 			"X-Plex-Container-Size":  strconv.Itoa(ItemWindow),
@@ -268,11 +270,34 @@ func (c *Client) sectionItems(ctx context.Context, key, metadataType int, kind m
 			return out, err
 		}
 		batch := parseItems(*page, kind)
-		if len(batch) == 0 {
+
+		added := 0
+		for _, it := range batch {
+			if seen[it.RatingKey] {
+				continue
+			}
+			seen[it.RatingKey] = true
+			out = append(out, it)
+			added++
+		}
+		// A page with nothing new on it is a server repeating itself, which is
+		// what a server that ignores the offset would do forever. It is also
+		// what the walk ends on when the server reports no total: every
+		// iteration either adds an item or stops, and the library is finite, so
+		// the walk terminates without a page size to count against.
+		if added == 0 {
 			break
 		}
-		out = append(out, batch...)
 		start += len(batch)
+
+		// When the server reports a total, it is the only thing that says the
+		// walk is over. The page size deliberately is not: a server that caps
+		// its answer below the size asked for would otherwise end the walk on
+		// its first page and silently return a fraction of the library, which
+		// is worse than the timeout this paging exists to avoid.
+		if total := page.MediaContainer.Total.Int(); total > 0 && start >= total {
+			break
+		}
 	}
 	return out, nil
 }
