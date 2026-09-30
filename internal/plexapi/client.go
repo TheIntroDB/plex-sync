@@ -13,11 +13,10 @@ package plexapi
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -86,6 +85,7 @@ type Client struct {
 	cfg        config.Plex
 	hc         *httpclient.Client
 	identifier string
+	deviceName string
 	owned      bool
 }
 
@@ -113,7 +113,22 @@ func NewClient(cfg config.Plex, hc *httpclient.Client) *Client {
 		hc = httpclient.New(timeout, cfg.InsecureSkipVerify, UserAgent)
 		owned = true
 	}
-	return &Client{cfg: cfg, hc: hc, identifier: clientIdentifier(), owned: owned}
+
+	// The identifier Plex keys a device entry on. app.Open resolves the stored
+	// one; a client built directly -- by a test, or by a caller that has its own
+	// -- has not, and gets a fresh one, which is only correct for a process that
+	// runs once.
+	id := strings.TrimSpace(cfg.ClientID)
+	if id == "" {
+		id = config.NewClientID()
+	}
+	return &Client{
+		cfg:        cfg,
+		hc:         hc,
+		identifier: id,
+		deviceName: cfg.ResolvedDeviceName(),
+		owned:      owned,
+	}
 }
 
 // Close releases the connection pool, but only when this client built it.
@@ -126,17 +141,12 @@ func (c *Client) Close() {
 // URL returns the base URL this client talks to.
 func (c *Client) URL() string { return c.cfg.URL }
 
-// clientIdentifier is a stable-per-process X-Plex-Client-Identifier. Plex keys
-// its token and activity records on it, so it must not change per request.
-func clientIdentifier() string {
-	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err == nil {
-		return Product + "-" + hex.EncodeToString(buf[:])
-	}
-	return Product + "-" + strconv.FormatInt(time.Now().UnixNano(), 16)
-}
-
 // headers returns the headers every Plex request needs.
+//
+// The device headers are what Plex names this client with, in its device list
+// and in its "a new device used your server" notification. Without them that
+// notification arrives with empty brackets where the name goes, which is what it
+// did: identifiable to nobody, on every run.
 func (c *Client) headers() map[string]string {
 	return map[string]string{
 		"X-Plex-Token":             c.cfg.Token,
@@ -144,6 +154,30 @@ func (c *Client) headers() map[string]string {
 		"X-Plex-Client-Identifier": c.identifier,
 		"X-Plex-Product":           Product,
 		"X-Plex-Version":           Version,
+		"X-Plex-Device-Name":       c.deviceName,
+		"X-Plex-Device":            deviceClass(),
+		"X-Plex-Platform":          deviceClass(),
+		// X-Plex-Platform-Version is deliberately not sent. It means the
+		// version of the platform, and the only version this tool knows is its
+		// own, which X-Plex-Version already carries.
+	}
+}
+
+// deviceClass is the platform Plex files this client under. It is reported
+// rather than assumed, so a build on macOS does not tell the server it is a
+// Linux one.
+func deviceClass() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macOS"
+	case "windows":
+		return "Windows"
+	case "linux":
+		return "Linux"
+	case "freebsd":
+		return "FreeBSD"
+	default:
+		return runtime.GOOS
 	}
 }
 

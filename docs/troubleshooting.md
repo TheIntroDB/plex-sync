@@ -67,6 +67,26 @@ The other causes are ordinary: no read access to the database, or episodes whose
 show rows carry no provider ids. Check what `plex-sync library` prints for the
 ids an item would be looked up with.
 
+## A "new device used your server" notification every run
+
+Expected once, not nightly. Plex identifies a caller by the identifier it sends,
+and one it has not seen before is a new device, which is what it notifies about.
+
+The identifier is stored in `<state_dir>/client-id` and reused, so a fresh
+install registers one device and keeps it. Every run looking like a new device
+means that file is not surviving: most often the state directory is inside a
+container that is recreated without a volume, or it is somewhere that is wiped.
+Keep `state_dir` — the same directory the ledger lives in — on something
+persistent.
+
+If the notification has empty brackets where the device name should be, the name
+is not set. `plex.device_name`, or `PLEX_SYNC_DEVICE_NAME` for a container, is
+what Plex shows; it defaults to `plex-sync`.
+
+The device list in Plex is not cleaned up by any of this. Runs from before the
+identifier was stored each left an entry of their own, and those stay until they
+are removed by hand.
+
 ## "no-provider-id"
 
 The item has no TMDb, IMDb or Tvdb id, so there is nothing to look it up by.

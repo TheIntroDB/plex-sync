@@ -119,8 +119,11 @@ func (s setting) text(cfg *config.Config) string {
 // Saying which is which matters more than it sounds: "saved" on its own invites
 // someone to change the API key, see nothing happen, and conclude it is broken.
 var restartKeys = map[string]bool{
-	"plex.url":                true,
-	"plex.token":              true,
+	"plex.url":   true,
+	"plex.token": true,
+	// The name goes out on every request, but the Plex client resolved the one
+	// it will send when it was built, so the change is the next run's.
+	"plex.device_name":        true,
 	"theintrodb.api_key":      true,
 	"theintrodb.daily_budget": true,
 	"log_level":               true,
@@ -197,6 +200,19 @@ func settingsRows() []setting {
 					return "found automatically: " + found
 				}
 				return "not found, and writing needs it"
+			},
+		},
+
+		{
+			section: "Plex", key: "plex.device_name", label: "device name", kind: settingText,
+			help: "What Plex shows for this tool in its device list and in its \"new device\" notification. Empty means \"plex-sync\".",
+			get:  func(c *config.Config) string { return c.Plex.DeviceName },
+			set:  func(c *config.Config, v string) error { c.Plex.DeviceName = strings.TrimSpace(v); return nil },
+			fallback: func(c *config.Config) string {
+				// Plex always has a name to print -- the environment's, this
+				// setting's, or the built-in one -- so "(empty)" would be a lie
+				// in the one row whose job is to say what Plex will call this.
+				return "in use: " + c.Plex.ResolvedDeviceName()
 			},
 		},
 

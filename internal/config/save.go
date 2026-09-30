@@ -21,7 +21,8 @@ const header = `# plex-sync configuration.
 #
 # Precedence, lowest to highest: these values, the environment, then flags.
 # Environment variables that override the file: PLEX_URL, PLEX_TOKEN, PLEX_DB,
-# PLEX_CONFIG_DIR, TIDB_API_KEY, TIDB_API_URL, TIDB_DAILY_BUDGET,
+# PLEX_CONFIG_DIR, PLEX_SYNC_CLIENT_ID, PLEX_SYNC_DEVICE_NAME,
+# TIDB_API_KEY, TIDB_API_URL, TIDB_DAILY_BUDGET,
 # PLEX_SYNC_STATE_DIR, PLEX_SYNC_LOG_LEVEL, PLEX_SYNC_SCHEDULE,
 # PLEX_SYNC_CHAPTERS, PLEX_SYNC_DETECTION, PLEX_SYNC_ALLOW_LIVE,
 # PLEX_SYNC_API_ADDR, PLEX_SYNC_API_ENABLED.
@@ -56,6 +57,14 @@ func (c *Config) forWriting() Config {
 		if probe.ResolvedDatabase() == database {
 			out.Plex.Database = ""
 		}
+	}
+	// The client identifier is resolved the same way, and for the same reason.
+	// It belongs to the install rather than to a person, so writing it down
+	// freezes the one thing that is supposed to follow the state directory --
+	// and a configuration file copied to a second machine would hand both the
+	// same identity, which Plex would then show as a single device.
+	if id := out.Plex.ClientID; id != "" && out.StoredClientID() == id {
+		out.Plex.ClientID = ""
 	}
 	return out
 }
