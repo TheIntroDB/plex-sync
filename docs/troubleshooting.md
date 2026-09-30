@@ -22,6 +22,33 @@ not submit anything, so there is no `submit` command. If you want to contribute 
 timing you know, do it on [theintrodb.org](https://theintrodb.org), which is
 where contributions are made.
 
+## "read the Plex library: ... timeout or cancel"
+
+The request that reads a library section did not come back inside
+`plex.timeout_s` (20 seconds by default).
+
+The library read is paged, the first request included, so no single request asks
+Plex to build a response proportional to the size of the section. On a build
+older than that fix the first request was unpaged, and Plex answered it by
+assembling the whole section at once — which on a section of tens of thousands
+of episodes outlives any sensible timeout. Raising `plex.timeout_s` was the
+workaround then:
+
+```toml
+[plex]
+timeout_s = 120
+```
+
+It still works as a workaround, but it is no longer the fix, and it is worth
+checking that the failing request is the section read before reaching for it: a
+timeout on `/library/metadata/<key>` is a different problem.
+
+`/identity` answering — which is what `setup` and `config check` report as `plex
+server ok` — proves only that the URL reaches a Plex server. It is
+unauthenticated, so it says nothing about the token, and it is a small answer, so
+it says nothing about whether a library-sized one can be served. A rejected token
+answers 401 immediately rather than timing out.
+
 ## "no-provider-id"
 
 The item has no TMDb, IMDb or Tvdb id, so there is nothing to look it up by.
