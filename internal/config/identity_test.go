@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -85,8 +86,16 @@ func TestResolvePlexIdentityKeepsOneIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("stored identifier mode = %v, want 0600", perm)
+	if runtime.GOOS != "windows" {
+		// Windows has no POSIX modes: os.WriteFile's 0600 there only toggles
+		// the read-only attribute, and a file created in the user's own
+		// profile is already limited by the directory's ACLs. There is nothing
+		// portable to assert, which is the same reason the saved configuration
+		// skips this. The identifier's stability, below, is not platform
+		// specific and is asserted everywhere.
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("stored identifier mode = %v, want 0600", perm)
+		}
 	}
 
 	// A second run, as a scheduled job would be, over the same state.
