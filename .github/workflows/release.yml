@@ -86,14 +86,14 @@ jobs:
       # A package published here is PRIVATE, whatever the repository's visibility
       # is, and the first release after this step was added produced an image
       # nobody could pull: an anonymous request answered 403. Making it public is
-      # a one-time setting on the package itself --
+      # a one-time change made by hand on the package itself --
       #   https://github.com/orgs/TheIntroDB/packages/container/plex-sync/settings
-      # -- and it cannot be done from here. This token can read the visibility
-      # but a PATCH of it answers 404, because changing it needs a user token
-      # with write:packages and an organisation admin. Visibility is a property
-      # of the package rather than of a version, so doing it once covers every
-      # release after; check it after the first publish, and after any change to
-      # the image name below, which would create a new package.
+      # -- because the workflow token cannot make it. Measured against the
+      # package as published: this token reads the visibility fine, and a PATCH
+      # of it answers 404. Visibility belongs to the package rather than to a
+      # version, so doing it once covers every release after; check it after the
+      # first publish, and after any change to the image name below, which would
+      # create a new package.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

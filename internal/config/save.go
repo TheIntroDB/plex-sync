@@ -63,7 +63,11 @@ func (c *Config) forWriting() Config {
 	// freezes the one thing that is supposed to follow the state directory --
 	// and a configuration file copied to a second machine would hand both the
 	// same identity, which Plex would then show as a single device.
-	if id := out.Plex.ClientID; id != "" && out.StoredClientID() == id {
+	//
+	// Only what resolution supplied is dropped. An identifier somebody typed is
+	// kept even when it happens to match the stored one, because then it was
+	// chosen, and a later change of state directory is meant to leave it alone.
+	if out.PlexClientIDResolved {
 		out.Plex.ClientID = ""
 	}
 	return out

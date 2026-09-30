@@ -55,6 +55,13 @@ type Config struct {
 
 	// Path is where the config was loaded from, empty for defaults.
 	Path string `toml:"-"`
+	// PlexClientIDResolved records that ResolvePlexIdentity supplied
+	// Plex.ClientID from the state directory rather than finding it set by a
+	// person. It exists for one decision: a resolved identifier is left out of
+	// the file when the configuration is written, and one that was chosen is
+	// kept even when it happens to equal what is stored. Comparing the two
+	// values instead would quietly discard an override that was deliberate.
+	PlexClientIDResolved bool `toml:"-"`
 }
 
 // Plex configures how to reach Plex and where its database lives.

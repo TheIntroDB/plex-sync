@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -211,5 +212,73 @@ func TestSaveDoesNotFreezeTheResolvedIdentifier(t *testing.T) {
 	chosen.Plex.ClientID = "chosen-by-hand"
 	if got := chosen.forWriting().Plex.ClientID; got != "chosen-by-hand" {
 		t.Errorf("a configured identifier was dropped on write: %q", got)
+	}
+}
+
+// An identifier somebody typed is kept even when it matches what is stored.
+// Comparing the two values instead of recording which one supplied it would
+// discard a deliberate override, and a later change of state directory would
+// then generate a new identity rather than honour it.
+func TestSaveKeepsAConfiguredIdentifierThatMatchesTheStoredOne(t *testing.T) {
+	cfg := identityConfig(t)
+	if err := cfg.ResolvePlexIdentity(); err != nil {
+		t.Fatalf("ResolvePlexIdentity: %v", err)
+	}
+	stored := cfg.Plex.ClientID
+
+	chosen := identityConfig(t)
+	if err := os.WriteFile(chosen.ClientIDPath(), []byte(stored+"\n"), 0o600); err != nil {
+		t.Fatalf("write the file: %v", err)
+	}
+	chosen.Plex.ClientID = stored
+
+	if got := chosen.forWriting().Plex.ClientID; got != stored {
+		t.Errorf("a configured identifier matching the stored one was dropped: %q, want %q", got, stored)
+	}
+}
+
+// Two processes starting against the same state directory must agree on one
+// identifier, or one install presents two devices to Plex. They race exactly
+// here, and the file is created before it is written, so this also covers a
+// reader arriving in that window.
+func TestResolvePlexIdentityIsStableUnderConcurrency(t *testing.T) {
+	base := identityConfig(t)
+	const processes = 8
+
+	ids := make([]string, processes)
+	errs := make([]error, processes)
+	var start sync.WaitGroup
+	var done sync.WaitGroup
+	start.Add(1)
+	for i := range processes {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			cfg := Default()
+			cfg.StateDir = base.StateDir
+			start.Wait()
+			errs[i] = cfg.ResolvePlexIdentity()
+			ids[i] = cfg.Plex.ClientID
+		}()
+	}
+	start.Done()
+	done.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("process %d: %v", i, err)
+		}
+	}
+	for i, id := range ids {
+		if id != ids[0] {
+			t.Errorf("process %d used %q, want %q: one install must be one device to Plex", i, id, ids[0])
+		}
+	}
+	raw, err := os.ReadFile(base.ClientIDPath())
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if got := strings.TrimSpace(string(raw)); got != ids[0] {
+		t.Errorf("stored identifier = %q, want the one every process used (%q)", got, ids[0])
 	}
 }

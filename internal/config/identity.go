@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,6 +36,14 @@ const (
 	// this one is small enough to be obviously sane and far larger than the
 	// identifiers real clients send.
 	maxClientIDLen = 128
+
+	// clientIDWaitAttempts and clientIDWaitInterval bound the wait for another
+	// process to finish writing an identifier it has created but not yet
+	// written. Two processes racing here is a startup collision, not a
+	// workload, so the window is a fraction of a second and the wait is over
+	// rather than indefinite.
+	clientIDWaitAttempts = 50
+	clientIDWaitInterval = 2 * time.Millisecond
 )
 
 // ResolvedDeviceName is the name Plex shows for this tool: the environment, then
@@ -73,6 +82,7 @@ func (c *Config) ResolvePlexIdentity() error {
 	}
 	if stored := c.StoredClientID(); stored != "" {
 		c.Plex.ClientID = stored
+		c.PlexClientIDResolved = true
 		return nil
 	}
 
@@ -80,12 +90,79 @@ func (c *Config) ResolvePlexIdentity() error {
 	if err := os.MkdirAll(c.StateDir, 0o755); err != nil {
 		return fmt.Errorf("create state directory %s: %w", c.StateDir, err)
 	}
-	// 0600: the identifier is not a secret, but it names this install to a
-	// server, and nothing else on the machine has any business rewriting it.
-	if err := os.WriteFile(c.ClientIDPath(), []byte(id+"\n"), 0o600); err != nil {
+	// O_EXCL, so that two processes starting against the same state directory
+	// agree on one identifier: the one that creates the file wins, and the other
+	// adopts what it wrote. Without it both generate one, both write, each keeps
+	// its own in memory -- two devices to Plex from one install -- and the file
+	// holds whichever finished last.
+	f, err := os.OpenFile(c.ClientIDPath(), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	switch {
+	case err == nil:
+		_, writeErr := f.WriteString(id + "\n")
+		closeErr := f.Close()
+		if writeErr != nil {
+			return fmt.Errorf("write %s: %w", c.ClientIDPath(), writeErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("write %s: %w", c.ClientIDPath(), closeErr)
+		}
+		c.Plex.ClientID = id
+		c.PlexClientIDResolved = true
+		return nil
+	case errors.Is(err, os.ErrExist):
+		// Another process created it between the read above and this open, so
+		// its identifier is the install's and ours is not. The file is created
+		// before it is written, so an immediate read can catch it still empty;
+		// waiting for it is bounded, and running without one is worse than
+		// waiting a moment.
+		for attempt := 0; attempt < clientIDWaitAttempts; attempt++ {
+			if stored := c.StoredClientID(); stored != "" {
+				c.Plex.ClientID = stored
+				c.PlexClientIDResolved = true
+				return nil
+			}
+			time.Sleep(clientIDWaitInterval)
+		}
+		// It exists and holds nothing usable: a crash between the create and
+		// the write, or a file that was truncated or edited. Replacing it is
+		// the only way out, because otherwise every run waits and then uses an
+		// identifier that is not the one on disk.
+		if err := writeClientID(c.ClientIDPath(), id); err != nil {
+			return err
+		}
+		c.Plex.ClientID = id
+		c.PlexClientIDResolved = true
+		return nil
+	default:
 		return fmt.Errorf("write %s: %w", c.ClientIDPath(), err)
 	}
-	c.Plex.ClientID = id
+}
+
+// writeClientID replaces the stored identifier through a temporary file, so a
+// reader arriving during the write sees either the old value or the new one and
+// never half of either.
+func writeClientID(path, id string) error {
+	dir := filepath.Dir(path)
+	temp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	name := temp.Name()
+	defer func() { _ = os.Remove(name) }() // a no-op once renamed
+
+	if _, err := temp.WriteString(id + "\n"); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Rename(name, path); err != nil {
+		return fmt.Errorf("replace %s: %w", path, err)
+	}
 	return nil
 }
 
