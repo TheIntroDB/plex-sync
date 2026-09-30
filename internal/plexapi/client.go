@@ -281,23 +281,21 @@ func (c *Client) sectionItems(ctx context.Context, key, metadataType int, kind m
 			added++
 		}
 		// A page with nothing new on it is a server repeating itself, which is
-		// what a server that ignores the offset would do forever.
+		// what a server that ignores the offset would do forever. It is also
+		// what the walk ends on when the server reports no total: every
+		// iteration either adds an item or stops, and the library is finite, so
+		// the walk terminates without a page size to count against.
 		if added == 0 {
 			break
 		}
 		start += len(batch)
 
-		if total := page.MediaContainer.Total.Int(); total > 0 {
-			if start >= total {
-				break
-			}
-			continue
-		}
-		// No total to count against: the page size is the only signal, and a
-		// page that is not the size asked for is the last one. A server that
-		// ignores the size entirely answers with the whole section, which is
-		// larger than the window and so also ends the walk after one request.
-		if len(batch) != ItemWindow {
+		// When the server reports a total, it is the only thing that says the
+		// walk is over. The page size deliberately is not: a server that caps
+		// its answer below the size asked for would otherwise end the walk on
+		// its first page and silently return a fraction of the library, which
+		// is worse than the timeout this paging exists to avoid.
+		if total := page.MediaContainer.Total.Int(); total > 0 && start >= total {
 			break
 		}
 	}

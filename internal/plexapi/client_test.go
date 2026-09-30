@@ -610,6 +610,44 @@ func TestItemsPagingWithoutTotal(t *testing.T) {
 	}
 }
 
+// TestItemsPagingServerThatCapsThePage covers a server that answers with fewer
+// items than the size asked for and reports no total. The page size must not end
+// the walk: doing so would return a fraction of the library and look like a
+// successful read, which is worse than the timeout the paging exists to avoid.
+func TestItemsPagingServerThatCapsThePage(t *testing.T) {
+	t.Parallel()
+	const (
+		total  = 7
+		server = 2 // what this server will hand over per request
+	)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections/7/all" {
+			writeJSON(w, http.StatusOK,
+				`{"MediaContainer":{"size":1,"Directory":[{"key":"7","title":"TV","type":"show"}]}}`)
+			return
+		}
+		start, _ := strconv.Atoi(r.Header.Get("X-Plex-Container-Start"))
+		writeJSON(w, http.StatusOK, sectionPageNoTotal(start, server, total))
+	}
+
+	f := newFake(t, handler)
+	c := f.client(t)
+
+	items, err := c.Items(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Items: %v", err)
+	}
+	if len(items) != total {
+		t.Fatalf("Items = %d entries, want %d: a capped page ended the walk early", len(items), total)
+	}
+	for i, it := range items {
+		if it.RatingKey != 900+i {
+			t.Fatalf("items[%d].RatingKey = %d, want %d", i, it.RatingKey, 900+i)
+		}
+	}
+}
+
 // TestItemsServerThatIgnoresPaging terminates and does not duplicate when the
 // server answers every request with the whole section, which is what a server
 // with no container support looks like.

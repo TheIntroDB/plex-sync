@@ -40,7 +40,7 @@ VALUES (?, ?, 1, 1700000000)`, showID, tmdbTag)
 VALUES (?, ?, 2, 1700000000)`, showID, imdbTag)
 
 	keys := make([]int64, 0, episodes)
-	tx, err := f.db.Begin()
+	tx, err := f.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
@@ -50,6 +50,7 @@ VALUES (?, 4, ?, 2, ?, 'Episode', 0, 1700000000, 1700000000, NULL)`)
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
+	defer func() { _ = stmt.Close() }()
 	for i := 1; i <= episodes; i++ {
 		key := int64(i)
 		if _, err := stmt.Exec(key, seasonID, i); err != nil {
@@ -83,9 +84,14 @@ VALUES (?, 4, ?, 2, ?, 'Episode', 0, 1700000000, 1700000000, NULL)`)
 	}
 }
 
-// TestShowProviderIDsChunkBoundary checks the join between two chunks: an
-// episode in the last chunk must resolve exactly as one in the first, and a key
-// named twice must not be reported twice.
+// TestShowProviderIDsChunkBoundary checks the join between two chunks, and that a
+// key named twice is not reported twice.
+//
+// The library is one key longer than a chunk, so the last key is read by a second
+// statement than the first, and the repeat is appended after a whole chunk-sized
+// group so deduplication is what keeps it out of the second one. A shorter
+// library would put every key in the same statement and prove nothing about
+// either.
 func TestShowProviderIDsChunkBoundary(t *testing.T) {
 	t.Parallel()
 
@@ -106,24 +112,45 @@ VALUES (?, 3, ?, 2, 1, 'Season 1', 0, 1700000000, 1700000000, NULL)`, seasonID, 
 	f.exec(`INSERT INTO taggings (metadata_item_id, tag_id, "index", created_at)
 VALUES (?, ?, 1, 1700000000)`, showID, tag)
 
-	// One key on each side of the first chunk boundary.
-	first := int64(1)
-	last := int64(showIDChunk + 1)
-	for _, key := range []int64{first, last} {
-		f.exec(`INSERT INTO metadata_items
-    (id, metadata_type, parent_id, library_section_id, "index", title, duration, added_at, updated_at, guid)
-VALUES (?, 4, ?, 2, 1, 'Episode', 0, 1700000000, 1700000000, NULL)`, key, seasonID)
+	// One chunk and one more, so the walk has to join two statements.
+	distinct := showIDChunk + 1
+	keys := make([]int64, 0, distinct+1)
+	tx, err := f.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
 	}
+	stmt, err := tx.Prepare(`INSERT INTO metadata_items
+    (id, metadata_type, parent_id, library_section_id, "index", title, duration, added_at, updated_at, guid)
+VALUES (?, 4, ?, 2, 1, 'Episode', 0, 1700000000, 1700000000, NULL)`)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	defer func() { _ = stmt.Close() }()
+	for i := 1; i <= distinct; i++ {
+		key := int64(i)
+		if _, err := stmt.Exec(key, seasonID); err != nil {
+			t.Fatalf("insert episode %d: %v", i, err)
+		}
+		keys = append(keys, key)
+	}
+	if err := stmt.Close(); err != nil {
+		t.Fatalf("close statement: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	// The first key again, after a whole chunk of others.
+	keys = append(keys, 1)
 
 	db := f.open()
-	got, err := db.ShowProviderIDs(context.Background(), []int64{first, last, first})
+	got, err := db.ShowProviderIDs(context.Background(), keys)
 	if err != nil {
 		t.Fatalf("ShowProviderIDs: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("ShowProviderIDs returned %d episodes, want 2", len(got))
+	if len(got) != distinct {
+		t.Fatalf("ShowProviderIDs returned %d episodes, want %d", len(got), distinct)
 	}
-	for _, key := range []int64{first, last} {
+	for _, key := range keys {
 		if tags := got[key]; len(tags) != 1 || tags[0] != "tmdb://1911" {
 			t.Fatalf("episode %d tags = %v, want the show's id once", key, tags)
 		}
