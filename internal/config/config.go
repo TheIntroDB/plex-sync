@@ -55,6 +55,13 @@ type Config struct {
 
 	// Path is where the config was loaded from, empty for defaults.
 	Path string `toml:"-"`
+	// PlexClientIDResolved records that ResolvePlexIdentity supplied
+	// Plex.ClientID from the state directory rather than finding it set by a
+	// person. It exists for one decision: a resolved identifier is left out of
+	// the file when the configuration is written, and one that was chosen is
+	// kept even when it happens to equal what is stored. Comparing the two
+	// values instead would quietly discard an override that was deliberate.
+	PlexClientIDResolved bool `toml:"-"`
 }
 
 // Plex configures how to reach Plex and where its database lives.
@@ -72,6 +79,16 @@ type Plex struct {
 	AllowFusePath bool `toml:"allow_fuse_path"`
 	// InsecureSkipVerify is only for a self-signed local Plex.
 	InsecureSkipVerify bool `toml:"insecure_skip_verify"`
+	// ClientID is what Plex keys this install's device entry on: an identifier
+	// it has not seen before is a new device, which is what a "used a new device
+	// to access your server" notification is sent for. Empty uses the identifier
+	// stored in the state directory, created on first run. Set it only when the
+	// state directory is not durable, or to give several installs one identity.
+	ClientID string `toml:"client_id"`
+	// DeviceName is what Plex calls this tool in its device list and in that
+	// notification. Empty means "plex-sync"; PLEX_SYNC_DEVICE_NAME overrides
+	// both, which is what a container should set.
+	DeviceName string `toml:"device_name"`
 }
 
 // TheIntroDB configures the API client.
@@ -616,6 +633,8 @@ func (c *Config) applyEnv() {
 	str("PLEX_CONFIG_DIR", &c.Plex.ConfigDir)
 	boolean("PLEX_INSECURE", &c.Plex.InsecureSkipVerify)
 	boolean("PLEX_ALLOW_FUSE_PATH", &c.Plex.AllowFusePath)
+	str(EnvClientID, &c.Plex.ClientID)
+	str(EnvDeviceName, &c.Plex.DeviceName)
 
 	str("TIDB_API_KEY", &c.TheIntroDB.APIKey)
 	str("TIDB_API_URL", &c.TheIntroDB.BaseURL)
@@ -818,7 +837,8 @@ func exampleConfig(stateDir string) string {
 	return `# plex-sync configuration.
 # Every value here is optional; the defaults shown are the built-in ones.
 # Environment variables override this file (PLEX_URL, PLEX_TOKEN, PLEX_DB,
-# PLEX_CONFIG_DIR, TIDB_API_KEY, TIDB_API_URL, PLEX_SYNC_STATE_DIR).
+# PLEX_CONFIG_DIR, PLEX_SYNC_CLIENT_ID, PLEX_SYNC_DEVICE_NAME,
+# TIDB_API_KEY, TIDB_API_URL, PLEX_SYNC_STATE_DIR).
 
 # Top-level keys must come before the first section header, or TOML reads them
 # as part of that section.
@@ -837,6 +857,15 @@ token = ""
 database = ""
 # Alternatively, the Plex application-support directory.
 config_dir = ""
+# What Plex shows for this tool in its device list, and in the "a new device
+# used your server" notification. Empty means "plex-sync". A container should
+# set this (or PLEX_SYNC_DEVICE_NAME) to the name it is known by, because that
+# is the name that will appear.
+device_name = ""
+# The identifier Plex keys this install's device entry on, so it does not treat
+# every run as a new device. Empty uses the one stored in the state directory,
+# which is created on first run; only set it when that directory is not durable.
+client_id = ""
 
 [theintrodb]
 # The TheIntroDB API key is optional. With a key the daily allowance is higher

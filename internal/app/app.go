@@ -81,6 +81,15 @@ func Open(cfg *config.Config, log *slog.Logger, opts Options) (*App, error) {
 		}
 	}
 
+	// The identifier Plex keys this install's device entry on is kept here, once,
+	// so that a nightly run is the same device to Plex every night. It is not
+	// fatal when it cannot be stored: the tool still works, it just registers as
+	// a new device, which is the thing this exists to stop.
+	if err := cfg.ResolvePlexIdentity(); err != nil {
+		log.Warn("could not keep a durable Plex device identity, so Plex will see each run as a new device",
+			"error", err)
+	}
+
 	application := &App{
 		Cfg: cfg,
 		Log: log,

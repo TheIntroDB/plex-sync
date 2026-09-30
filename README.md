@@ -165,6 +165,7 @@ docker run -d --restart=unless-stopped \
   --name plex-sync \
   -e PLEX_URL=http://plex:32400 \
   -e PLEX_TOKEN=xxxxxxxxxxxx \
+  -e PLEX_SYNC_DEVICE_NAME="plex-sync (media-nas)" \
   -v "/mnt/cache/appdata/plex/Library/Application Support/Plex Media Server:/plex:ro" \
   -v "/mnt/cache/appdata/plex-sync:/state" \
   ghcr.io/theintrodb/plex-sync:latest schedule --yes
@@ -173,6 +174,11 @@ docker run -d --restart=unless-stopped \
 The image is published to the GitHub Container Registry as
 `ghcr.io/theintrodb/plex-sync`, tagged with each release version and with
 `latest`.
+
+`PLEX_SYNC_DEVICE_NAME` is optional and is what Plex shows in its device list,
+so the name you recognise is the one in the notification. The state volume has
+to persist either way: it holds the identity Plex knows this container by, and a
+container that loses it registers as a new device again.
 
 The Plex database must be mounted at its real, non-FUSE path. On Unraid that
 means the `/mnt/cache/...` path, never `/mnt/user/...`: SQLite locking through
@@ -359,6 +365,8 @@ Lookup order: `$PLEX_SYNC_CONFIG`, `./plex-sync.toml`,
 | `plex.token` | | Plex token, for the HTTP API |
 | `plex.database` | | path to `com.plexapp.plugins.library.db` |
 | `plex.config_dir` | | Plex application-support directory, if the database path is not given |
+| `plex.device_name` | `plex-sync` | what Plex shows for this tool in its device list |
+| `plex.client_id` | stored in `state_dir` | the identity Plex keys this install's device entry on |
 | `theintrodb.api_key` | | optional TheIntroDB API key |
 | `theintrodb.daily_budget` | `1000` | requests per UTC day |
 | `sources.chapters` | `false` | use chapter names as a source |
@@ -373,8 +381,16 @@ Lookup order: `$PLEX_SYNC_CONFIG`, `./plex-sync.toml`,
 | `state_dir` | `~/.config/plex-sync` | ledger, backups and undo journals |
 
 Environment variables: `PLEX_URL`, `PLEX_TOKEN`, `PLEX_DB`, `PLEX_CONFIG_DIR`,
+`PLEX_SYNC_CLIENT_ID`, `PLEX_SYNC_DEVICE_NAME`,
 `TIDB_API_KEY`, `TIDB_API_URL`, `PLEX_SYNC_STATE_DIR`, `PLEX_SYNC_LOG_LEVEL`,
 `PLEX_SYNC_CHAPTERS`, `PLEX_SYNC_DETECTION`, `PLEX_SYNC_ALLOW_LIVE`.
+
+Plex identifies a caller by an identifier it sends on every request, and treats
+one it has not seen as a new device — so the identifier is stored in the state
+directory and reused, and the first run of an install is the only one that
+registers a device. Set `plex.device_name` (or `PLEX_SYNC_DEVICE_NAME`) to
+whatever you recognise in Plex's device list, because that is the name Plex will
+show and notify with; a container should set it to its own name.
 
 ---
 

@@ -82,6 +82,18 @@ jobs:
       # runner needs QEMU for the non-native architecture and a buildx builder.
       # Logging in with the built-in token is what lets the image land on ghcr.io
       # under the repo's own namespace, with no extra registry secret to manage.
+      #
+      # A package published here is PRIVATE, whatever the repository's visibility
+      # is, and the first release after this step was added produced an image
+      # nobody could pull: an anonymous request answered 403. Making it public is
+      # a one-time change made by hand on the package itself --
+      #   https://github.com/orgs/TheIntroDB/packages/container/plex-sync/settings
+      # -- because the workflow token cannot make it. Measured against the
+      # package as published: this token reads the visibility fine, and a PATCH
+      # of it answers 404. Visibility belongs to the package rather than to a
+      # version, so doing it once covers every release after; check it after the
+      # first publish, and after any change to the image name below, which would
+      # create a new package.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

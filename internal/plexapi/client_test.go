@@ -718,6 +718,114 @@ func page(start, end, total int, withTotal bool) string {
 	return sb.String()
 }
 
+// TestDeviceIdentityHeaders covers what Plex names this client with.
+//
+// Without these headers its "a new device used your server" notification arrives
+// with empty brackets where the name goes, which is what a user reported.
+func TestDeviceIdentityHeaders(t *testing.T) {
+	// Not parallel: this reads the process environment, which another test in
+	// this package sets.
+	t.Setenv(config.EnvDeviceName, "")
+	t.Setenv(config.EnvClientID, "")
+
+	var (
+		mu     sync.Mutex
+		device = map[string]string{}
+		seen   bool
+	)
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = true
+		for _, h := range []string{
+			"X-Plex-Client-Identifier", "X-Plex-Device-Name",
+			"X-Plex-Device", "X-Plex-Platform", "X-Plex-Product",
+		} {
+			device[h] = r.Header.Get(h)
+		}
+		mu.Unlock()
+		writeJSON(w, http.StatusOK, `{"MediaContainer":{"machineIdentifier":"machine-1","version":"1.43.4"}}`)
+	}
+
+	f := newFake(t, handler)
+	hc := httpclient.New(5*time.Second, false, UserAgent)
+	t.Cleanup(hc.Close)
+	c := NewClient(config.Plex{
+		URL:        f.srv.URL,
+		Token:      fakeToken,
+		ClientID:   "plex-sync-0123456789abcdef",
+		DeviceName: "plex-sync (media-nas)",
+	}, hc)
+
+	if _, err := c.Identity(context.Background()); err != nil {
+		t.Fatalf("Identity: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !seen {
+		t.Fatal("no request was seen")
+	}
+	for header, want := range map[string]string{
+		"X-Plex-Client-Identifier": "plex-sync-0123456789abcdef",
+		"X-Plex-Device-Name":       "plex-sync (media-nas)",
+		"X-Plex-Product":           Product,
+	} {
+		if device[header] != want {
+			t.Errorf("%s = %q, want %q", header, device[header], want)
+		}
+	}
+	if device["X-Plex-Platform"] == "" {
+		t.Error("X-Plex-Platform is empty: Plex has nothing to file this client under")
+	}
+	if device["X-Plex-Device"] != device["X-Plex-Platform"] {
+		t.Errorf("X-Plex-Device = %q and X-Plex-Platform = %q; both describe the same host",
+			device["X-Plex-Device"], device["X-Plex-Platform"])
+	}
+}
+
+// A client built without a resolved identity is still identifiable: the name has
+// a default, and an identifier is generated rather than left empty. Only
+// app.Open resolves the stored one, so a caller that builds its own client must
+// not end up sending neither.
+func TestDeviceIdentityHasDefaults(t *testing.T) {
+	// Not parallel, for the same reason as above.
+	t.Setenv(config.EnvDeviceName, "")
+	t.Setenv(config.EnvClientID, "")
+
+	var (
+		mu     sync.Mutex
+		device = map[string]string{}
+		any    bool
+	)
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		any = true
+		device["name"] = r.Header.Get("X-Plex-Device-Name")
+		device["id"] = r.Header.Get("X-Plex-Client-Identifier")
+		mu.Unlock()
+		writeJSON(w, http.StatusOK, `{"MediaContainer":{"machineIdentifier":"m","version":"1.43.4"}}`)
+	}
+
+	f := newFake(t, handler)
+	c := f.client(t)
+
+	if _, err := c.Identity(context.Background()); err != nil {
+		t.Fatalf("Identity: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !any {
+		t.Fatal("no request was seen")
+	}
+	if device["name"] != config.DefaultDeviceName {
+		t.Errorf("X-Plex-Device-Name = %q, want %q", device["name"], config.DefaultDeviceName)
+	}
+	if device["id"] == "" {
+		t.Error("X-Plex-Client-Identifier is empty")
+	}
+}
+
 func TestChapters(t *testing.T) {
 	t.Parallel()
 	f := newFake(t, plexHandler)
