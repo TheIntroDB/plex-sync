@@ -997,6 +997,42 @@ func TestLookupFallsBackToIMDbAndTVDB(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
+// A TVDb id is asked for first even when the item also carries TMDb, because it
+// is the identity the answer is keyed on and the numbering Plex uses by default.
+// The season and episode travel with the id and are read in its numbering, so
+// the two cannot be separated.
+func TestLookupAsksByTVDbFirst(t *testing.T) {
+	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
+		js(w, 200, sampleBody)
+	}, nil)
+
+	tmdb, tvdb, season, episode := 615, 73871, 7, 1
+	item := model.LibraryItem{
+		RatingKey: 1, Kind: model.KindEpisode, Title: "Space Pilot 3000",
+		ShowTitle: "Futurama", Season: &season, Episode: &episode,
+		IDs: model.ExternalIDs{TMDB: &tmdb, TVDB: &tvdb},
+	}
+
+	_, res, err := h.client.Lookup(context.Background(), item)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if res.Key != "tvdb:73871:7:1" {
+		t.Errorf("Key = %q, want tvdb:73871:7:1", res.Key)
+	}
+
+	q := h.server.Last().Query
+	if got := q.Get("tvdb_id"); got != "73871" {
+		t.Errorf("tvdb_id = %q, want 73871 (query %v)", got, q)
+	}
+	if got := q.Get("tmdb_id"); got != "" {
+		t.Errorf("query carried tmdb_id = %q as well: one identity per request", got)
+	}
+	if q.Get("season") != "7" || q.Get("episode") != "1" {
+		t.Errorf("season/episode = %q/%q, want 7/1", q.Get("season"), q.Get("episode"))
+	}
+}
+
 func TestLookupWithoutAnIDNeverCallsTheAPI(t *testing.T) {
 	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
 		t.Error("the API was called for an item with no ids")

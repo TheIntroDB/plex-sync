@@ -69,8 +69,11 @@ Intro and Skip Credits buttons appear without any local analysis.
   which is the confusing part: the rows are there, Plex serves them, and the client
   still shows no button. See [docs/troubleshooting.md](docs/troubleshooting.md) if
   you have a Pass and the button is still missing.
-- **TMDb metadata is recommended** for accuracy. IMDb and Tvdb ids work as a
-  fallback but are less exact for TV episodes.
+- **A TVDb id is the best metadata match.** It is the identity TheIntroDB stores
+  its timings under, and the numbering Plex assigns by default, so both ends
+  mean the same episode. TMDb and IMDb ids are used when an item has no TVDb one;
+  the season and episode are then read in that provider's numbering, which is not
+  always the numbering Plex used.
 
 The database is found automatically: the tool searches the platform's own
 locations (macOS, Windows, Linux packages, snaps, containers and FreeBSD) and
@@ -448,7 +451,7 @@ cannot be told apart from a speed-up, so they are left alone.
 
 **No markers appear.** Markers are written by a run, not on playback. Check
 `plex-sync preview` to see what a run intends to do, and that your items have a
-TMDb or IMDb id (`plex-sync library`).
+TVDb, TMDb or IMDb id (`plex-sync library`).
 
 **"cannot confirm whether Plex is running".** Plex's process was not visible and
 its HTTP endpoint did not answer. Fix `plex.url`, or stop Plex and pass

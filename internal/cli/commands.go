@@ -106,7 +106,7 @@ item never gets markers.`),
 			}
 			fmt.Fprintf(out, "\n%d item(s): %d with a provider id, %d without\n", len(items), matched, unmatched)
 			if unmatched > 0 {
-				fmt.Fprintln(out, "Items without a TMDb, IMDb or Tvdb id cannot be looked up. Set your agent to TMDb.")
+				fmt.Fprintln(out, "Items without a TVDb, TMDb or IMDb id cannot be looked up. Set your library's agent to the Plex TV Series (TVDB) agent.")
 			}
 			return nil
 		},

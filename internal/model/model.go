@@ -8,6 +8,7 @@ package model
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -71,7 +72,9 @@ const (
 )
 
 // ExternalIDs are the provider ids Plex matched for an item. Any of them may be
-// missing; lookups prefer TMDb, which TheIntroDB keys its cut-aware data on.
+// missing; lookups prefer TVDb, which is the identity TheIntroDB stores and
+// answers by, and the numbering Plex uses for an episode unless the show has
+// been set to a different display order.
 type ExternalIDs struct {
 	TMDB *int    `json:"tmdb,omitempty"`
 	IMDb *string `json:"imdb,omitempty"`
@@ -81,22 +84,59 @@ type ExternalIDs struct {
 // Any reports whether at least one id is present.
 func (e ExternalIDs) Any() bool { return e.TMDB != nil || e.IMDb != nil || e.TVDB != nil }
 
+// ProviderID is one provider id, and the query parameter TheIntroDB is asked
+// with it under.
+type ProviderID struct {
+	// Provider is "tvdb", "tmdb" or "imdb"; the cache key records it.
+	Provider string
+	// Param is the API query parameter for this provider: "tvdb_id" and so on.
+	Param string
+	// Value is the id itself, as the request carries it.
+	Value string
+}
+
+// IDs returns the item's ids in the order they are asked in: TVDb, then TMDb,
+// then IMDb.
+//
+// That is the API's own precedence (`resolveMediaID`), so a lookup names the
+// identity the answer is keyed on whenever the item has one. The numbering
+// matters as much as the identity: an episode's season and episode are read in
+// the numbering of the id that was sent, and only a TVDb id is read as the TVDb
+// numbers, which is what Plex itself uses by default. Sent as tmdb_id, the same
+// numbers are taken to be TMDb's, and an episode whose place in TMDb's list
+// differs is answered with another episode's timings -- or with nothing at all.
+//
+// Both the cache key (LookupKey) and the request (tidb.buildQuery) are built
+// from this one list, so they cannot drift apart.
+func (e ExternalIDs) IDs() []ProviderID {
+	out := make([]ProviderID, 0, 3)
+	if e.TVDB != nil {
+		out = append(out, ProviderID{"tvdb", "tvdb_id", strconv.Itoa(*e.TVDB)})
+	}
+	if e.TMDB != nil {
+		out = append(out, ProviderID{"tmdb", "tmdb_id", strconv.Itoa(*e.TMDB)})
+	}
+	if e.IMDb != nil && *e.IMDb != "" {
+		out = append(out, ProviderID{"imdb", "imdb_id", *e.IMDb})
+	}
+	return out
+}
+
 // LookupKey returns the cache key for this item, and false when no id is known.
 //
 // The key encodes provider, id and episode coordinates, so a cached miss for
-// one episode can never shadow another.
+// one episode can never shadow another. The provider is the first of IDs(),
+// which is the provider buildQuery asks first: the key has to describe the
+// request that was made, or an entry answered under one id would be served to a
+// lookup asking under another. Changing the order renames the keys of items
+// whose id set spans more than one provider, so those are asked again after an
+// upgrade.
 func (e ExternalIDs) LookupKey(season, episode *int) (string, bool) {
-	var provider, value string
-	switch {
-	case e.TMDB != nil:
-		provider, value = "tmdb", fmt.Sprint(*e.TMDB)
-	case e.IMDb != nil && *e.IMDb != "":
-		provider, value = "imdb", *e.IMDb
-	case e.TVDB != nil:
-		provider, value = "tvdb", fmt.Sprint(*e.TVDB)
-	default:
+	ids := e.IDs()
+	if len(ids) == 0 {
 		return "", false
 	}
+	provider, value := ids[0].Provider, ids[0].Value
 	if season == nil || episode == nil {
 		return provider + ":" + value + ":movie", true
 	}
