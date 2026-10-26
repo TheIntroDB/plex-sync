@@ -100,7 +100,9 @@ every row is community-verified.
 The alternate sources exist to cover what TheIntroDB does not have yet. They can
 never override it for a segment type it already answered:
 
-1. **theintrodb** - the API, keyed by TMDb (IMDb and Tvdb as fallback).
+1. **theintrodb** - the API, asked with the item's TVDb id where it has one
+   (TMDb, then IMDb after that). That is the API's own precedence, and the TVDb
+   numbering is the one Plex assigns by default.
 2. **chapters** - chapter names Plex already extracted into the file's
    metadata ("Intro", "Opening Credits", "End Credits", "Recap"). Free: no
    lookups, no media reads, exact for the file on disk. Off by default.

@@ -110,7 +110,7 @@ func (c *Client) lookup(ctx context.Context, item model.LibraryItem, force bool)
 		}, &Error{
 			Kind: KindNoIDs,
 			Message: fmt.Sprintf(
-				"theintrodb: %s has no TMDb, IMDb or TVDb id, so it cannot be looked up",
+				"theintrodb: %s has no TVDb, TMDb or IMDb id, so it cannot be looked up",
 				item.Label()),
 		}
 	}
@@ -263,17 +263,19 @@ func (c *Client) failure(key string, err error, started time.Time) LookupResult 
 //
 // The duration is the real file length when it is known, which is what makes
 // the answer cut-aware; without it the timings may belong to a different cut.
-// Season and episode are sent only for episodes. The provider order matches
-// model.ExternalIDs.LookupKey, so the cache key and the query always agree.
+// Season and episode are sent only for episodes.
+//
+// The id is the first of model.ExternalIDs.IDs(), the same list the cache key
+// is taken from, so the key and the query cannot name different ids. TVDb goes
+// first: it is the identity TheIntroDB keys its data on, and the numbering Plex
+// uses by default, so an episode's season and episode mean the same thing to
+// both ends. Asking as tmdb_id instead sends Plex's TVDb numbering as if it
+// were TMDb's, which on a show whose orders differ returns another episode's
+// timings or a 404.
 func (c *Client) buildQuery(item model.LibraryItem) url.Values {
 	q := url.Values{}
-	switch {
-	case item.IDs.TMDB != nil:
-		q.Set("tmdb_id", strconv.Itoa(*item.IDs.TMDB))
-	case item.IDs.IMDb != nil && *item.IDs.IMDb != "":
-		q.Set("imdb_id", *item.IDs.IMDb)
-	case item.IDs.TVDB != nil:
-		q.Set("tvdb_id", strconv.Itoa(*item.IDs.TVDB))
+	if ids := item.IDs.IDs(); len(ids) > 0 {
+		q.Set(ids[0].Param, ids[0].Value)
 	}
 	if !item.IsMovie() && item.Season != nil && item.Episode != nil {
 		q.Set("season", strconv.Itoa(*item.Season))

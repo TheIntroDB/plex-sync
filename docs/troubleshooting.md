@@ -89,9 +89,10 @@ are removed by hand.
 
 ## "no-provider-id"
 
-The item has no TMDb, IMDb or Tvdb id, so there is nothing to look it up by.
-Set your Plex library's metadata agent to TMDb and refresh the item. TMDb is
-also the most accurate source for episodes, which is why it is preferred.
+The item has no TVDb, TMDb or IMDb id, so there is nothing to look it up by.
+Set your Plex library's metadata agent to the Plex TV Series (TVDB) agent and
+refresh the item. A TVDb id is what TheIntroDB is asked with: it is the identity
+the timings are stored under, and the numbering Plex assigns by default.
 
 ## "cannot confirm whether Plex is running"
 
@@ -217,9 +218,11 @@ which puts them back.
   made with the file length (`plex-sync preview` reports the source of each
   marker), and that the file has not been replaced since.
 - **Minutes out**: usually a PAL speed-up, or an episode-numbering mismatch. A
-  show that Plex numbers differently from TMDb (common with anime and
-  absolute-order shows) can receive another episode's timings. Those items are
-  not detectable automatically; exclude them with `--show` filters.
+  show whose episodes Plex numbers in a different display order (DVD, absolute,
+  or one Plex has matched to TMDb) can receive another episode's timings.
+  Lookups are made with the show's TVDb id, which is the numbering Plex uses by
+  default, so this is limited to shows whose order has been changed from the
+  default; `--show` filters exclude them.
 - **Warning about more than one TMDb id**: the item is ambiguous, so it is
   skipped rather than guessed at. Fix the metadata in Plex.
 

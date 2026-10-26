@@ -33,6 +33,24 @@ func TestDefaultsAreUsable(t *testing.T) {
 	}
 }
 
+// The default base URL has to name a surface that still serves /user/stats.
+//
+// /v2 and /v3 are frozen at GET /media and answer nothing else, so a default
+// pointing at either turns ValidateKey -- and the stats view behind it -- into
+// "theintrodb: user stats returned HTTP 404: Cannot GET /v3/user/stats", which
+// reads as a status failure rather than a verdict about the key.
+func TestDefaultBaseURLIsNotAFrozenSurface(t *testing.T) {
+	got := Default().TheIntroDB.BaseURL
+	if got != "https://api.theintrodb.org/v4" {
+		t.Errorf("default base URL = %q, want the v4 surface", got)
+	}
+	for _, frozen := range []string{"/v2", "/v3"} {
+		if strings.HasSuffix(strings.TrimRight(got, "/"), frozen) {
+			t.Errorf("the default names %s, which carries GET /media only", frozen)
+		}
+	}
+}
+
 // The pacing floor is not cosmetic: the server ceiling is 30 requests per 10
 // seconds, and pacing at exactly the ceiling produces 429s as soon as there is
 // any jitter.

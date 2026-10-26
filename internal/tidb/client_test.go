@@ -997,6 +997,42 @@ func TestLookupFallsBackToIMDbAndTVDB(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
+// A TVDb id is asked for first even when the item also carries TMDb, because it
+// is the identity the answer is keyed on and the numbering Plex uses by default.
+// The season and episode travel with the id and are read in its numbering, so
+// the two cannot be separated.
+func TestLookupAsksByTVDbFirst(t *testing.T) {
+	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
+		js(w, 200, sampleBody)
+	}, nil)
+
+	tmdb, tvdb, season, episode := 615, 73871, 7, 1
+	item := model.LibraryItem{
+		RatingKey: 1, Kind: model.KindEpisode, Title: "Space Pilot 3000",
+		ShowTitle: "Futurama", Season: &season, Episode: &episode,
+		IDs: model.ExternalIDs{TMDB: &tmdb, TVDB: &tvdb},
+	}
+
+	_, res, err := h.client.Lookup(context.Background(), item)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if res.Key != "tvdb:73871:7:1" {
+		t.Errorf("Key = %q, want tvdb:73871:7:1", res.Key)
+	}
+
+	q := h.server.Last().Query
+	if got := q.Get("tvdb_id"); got != "73871" {
+		t.Errorf("tvdb_id = %q, want 73871 (query %v)", got, q)
+	}
+	if got := q.Get("tmdb_id"); got != "" {
+		t.Errorf("query carried tmdb_id = %q as well: one identity per request", got)
+	}
+	if q.Get("season") != "7" || q.Get("episode") != "1" {
+		t.Errorf("season/episode = %q/%q, want 7/1", q.Get("season"), q.Get("episode"))
+	}
+}
+
 func TestLookupWithoutAnIDNeverCallsTheAPI(t *testing.T) {
 	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
 		t.Error("the API was called for an item with no ids")
@@ -1160,6 +1196,37 @@ func TestUserStats401(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid api key") {
 		t.Errorf("error = %q, want the server's reason", err.Error())
+	}
+}
+
+// A base URL that does not serve /user/stats answers 404. That is not a verdict
+// about the key, so it must not read as one and must not be terminal -- the v3
+// default produced exactly this, and the message named a status rather than the
+// key, which was fine.
+func TestUserStatsOnAFrozenSurfaceIsNotAKeyVerdict(t *testing.T) {
+	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Cannot GET "+r.URL.Path, 404)
+	}, func(cfg *config.TheIntroDB) { cfg.APIKey = "good-key" })
+
+	_, err := h.client.UserStats(context.Background())
+	if err == nil {
+		t.Fatal("a 404 on /user/stats should be an error")
+	}
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v, want an *Error", err)
+	}
+	if apiErr.Kind != KindStatus || apiErr.Status != 404 {
+		t.Errorf("kind = %q status = %d, want a %q 404", apiErr.Kind, apiErr.Status, KindStatus)
+	}
+	if apiErr.IsTerminal() {
+		t.Error("a 404 on /user/stats must not be terminal: the surface is the problem, not the key")
+	}
+	if strings.Contains(err.Error(), "rejected the API key") {
+		t.Errorf("a 404 must not be reported as a rejected key: %q", err.Error())
+	}
+	if got := h.server.Last().Path; got != statsPath {
+		t.Errorf("path = %q, want %q", got, statsPath)
 	}
 }
 

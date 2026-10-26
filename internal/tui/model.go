@@ -663,7 +663,7 @@ func (m *Model) togglePlanRescan() {
 	item := work[m.planCursor]
 	key, ok := item.Item.LookupKey()
 	if !ok {
-		m.setError(fmt.Errorf("%s has no TMDb, IMDb or TVDb id, so it cannot be looked up",
+		m.setError(fmt.Errorf("%s has no TVDb, TMDb or IMDb id, so it cannot be looked up",
 			item.Item.Label()))
 		return
 	}
