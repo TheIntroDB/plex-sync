@@ -1163,6 +1163,37 @@ func TestUserStats401(t *testing.T) {
 	}
 }
 
+// A base URL that does not serve /user/stats answers 404. That is not a verdict
+// about the key, so it must not read as one and must not be terminal -- the v3
+// default produced exactly this, and the message named a status rather than the
+// key, which was fine.
+func TestUserStatsOnAFrozenSurfaceIsNotAKeyVerdict(t *testing.T) {
+	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Cannot GET "+r.URL.Path, 404)
+	}, func(cfg *config.TheIntroDB) { cfg.APIKey = "good-key" })
+
+	_, err := h.client.UserStats(context.Background())
+	if err == nil {
+		t.Fatal("a 404 on /user/stats should be an error")
+	}
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v, want an *Error", err)
+	}
+	if apiErr.Kind != KindStatus || apiErr.Status != 404 {
+		t.Errorf("kind = %q status = %d, want a %q 404", apiErr.Kind, apiErr.Status, KindStatus)
+	}
+	if apiErr.IsTerminal() {
+		t.Error("a 404 on /user/stats must not be terminal: the surface is the problem, not the key")
+	}
+	if strings.Contains(err.Error(), "rejected the API key") {
+		t.Errorf("a 404 must not be reported as a rejected key: %q", err.Error())
+	}
+	if got := h.server.Last().Path; got != statsPath {
+		t.Errorf("path = %q, want %q", got, statsPath)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Usage accounting
 // ---------------------------------------------------------------------------

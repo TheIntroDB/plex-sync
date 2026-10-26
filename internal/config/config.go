@@ -209,7 +209,7 @@ func Default() *Config {
 			TimeoutS: 20,
 		},
 		TheIntroDB: TheIntroDB{
-			BaseURL:      "https://api.theintrodb.org/v3",
+			BaseURL:      "https://api.theintrodb.org/v4",
 			TimeoutS:     20,
 			DailyBudget:  1000,
 			MaxPerWindow: 25,
