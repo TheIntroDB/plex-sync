@@ -108,7 +108,7 @@ func (m *Model) statusScreen() string {
 		b.WriteString("  Plex          " + m.ok(m.readiness.PlexOK, m.readiness.PlexVersion, m.readiness.PlexError) + "\n")
 		status := "present"
 		if cfg.TheIntroDB.APIKey == "" {
-			status = "absent, 500 requests a day instead of 1000"
+			status = "absent, 5000 requests a day instead of 100000"
 		}
 		b.WriteString("  TheIntroDB    " + m.ok(m.readiness.TIDBOK, status, m.readiness.TIDBError) + "\n")
 	}

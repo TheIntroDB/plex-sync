@@ -21,9 +21,13 @@ so `journalctl`, the Docker log or a file all work as a record of what happened.
 
 ## Large libraries, and the daily allowance
 
-TheIntroDB allows 1000 requests per UTC day with an API key and 500 without one,
-so a library of tens of thousands of items is not scanned in one night. That is
-expected, and the schedule is how it is meant to be worked through:
+TheIntroDB allows 100000 requests per UTC day with an API key and 5000 without
+one. With a key that covers a full pass over a large library — 40,000 items need
+40,000 requests, and the client's floor of 25 requests per 10 seconds puts that
+at about four and a half hours — so a nightly schedule is enough. Without a key
+the allowance has to be worked through over several nights.
+
+The rules that make either case finish:
 
 - An item that has been looked up is recorded, and a recorded item is answered
   from the ledger afterwards without a request. Nothing expires that record, so
@@ -34,8 +38,10 @@ expected, and the schedule is how it is meant to be worked through:
   that reported an error every night would be a timer nobody reads.
 - The next run continues from the same place, because every scan is recorded.
 
-A schedule therefore converges: a 40,000-item library at 1000 requests a day
-gets through in about 40 days, writing the markers it has data for each night.
+A schedule therefore converges: every item is asked about once, so a run that
+stops — on the clock, on the allowance, or by being interrupted — costs only the
+items it never reached, and the next one carries on from there. With a key, a
+40,000-item library usually finishes in the first night.
 Raising `theintrodb.daily_budget` beyond the allowance does not help — the
 server refuses the request either way; the budget is what stops the client
 before the refusal.
