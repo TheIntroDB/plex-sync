@@ -737,7 +737,7 @@ func TestUsageLimitWaitIsNotClampedToFiveMinutes(t *testing.T) {
 
 	h := newHarness(t, func(call int, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-UsageLimit-Reset", fmt.Sprint(reset))
-		w.Header().Set("X-UsageLimit-Limit", "1000")
+		w.Header().Set("X-UsageLimit-Limit", "100000")
 		w.Header().Set("X-UsageLimit-Remaining", "0")
 		js(w, 429, `{"error":"daily limit reached","retry_after":"2 hours","code":"usage_limit_exceeded"}`)
 	}, nil)

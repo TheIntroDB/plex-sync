@@ -71,7 +71,7 @@ var schemaStatements = []string{
 	//
 	// The cache answers "do we still trust this body"; this answers "have we
 	// spent a request on this item yet". On a library of tens of thousands of
-	// items against a daily allowance of 500 or 1000, the second question is
+	// items against a daily allowance of 5000 or 100000, the second question is
 	// the one that matters: a run must spend its requests on items it has never
 	// seen, and must be able to stop and pick up where it left off tomorrow.
 	// Expiring these rows is exactly what would make a large library never

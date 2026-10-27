@@ -9,7 +9,7 @@
 // wrong:
 //
 //   - A 429 is either the rate window (30 requests per 10 seconds) or the daily
-//     allowance (1000 per account, 500 per public IP, reset at UTC midnight).
+//     allowance (100000 per account, 5000 per public IP, reset at UTC midnight).
 //     A rate-limit 429 carries only a Retry-After in seconds. A usage-limit 429
 //     carries X-UsageLimit-Reset in SECONDS UNTIL UTC MIDNIGHT, which can be up
 //     to about 86400, plus a JSON body with a code of usage_limit_exceeded or
@@ -229,7 +229,7 @@ type Client struct {
 // own default, and a non-positive DailyBudget means "uncounted". A nil ledger
 // disables caching and budget counting; a nil httpclient gets a default one.
 func NewClient(cfg config.TheIntroDB, led *ledger.Ledger, hc *httpclient.Client) *Client {
-	// Without a key the public allowance is 500 requests a day, not 1000.
+	// Without a key the public allowance is 5000 requests a day, not 100000.
 	// Budget for the allowance that actually applies rather than discovering it
 	// by being rate-limited for the rest of the day.
 	cfg.DailyBudget = cfg.EffectiveDailyBudget()

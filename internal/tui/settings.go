@@ -224,7 +224,7 @@ func settingsRows() []setting {
 		},
 		{
 			section: "TheIntroDB", key: "theintrodb.daily_budget", label: "daily budget", kind: settingInt,
-			help: "Requests per UTC day. The ceiling is 500 without a key and 1000 with one.",
+			help: "Requests per UTC day. The ceiling is 5000 without a key and 100000 with one.",
 			get:  intGet(func(c *config.Config) int { return c.TheIntroDB.DailyBudget }),
 			set:  intSet(func(c *config.Config, n int) { c.TheIntroDB.DailyBudget = n }),
 		},

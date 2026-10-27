@@ -320,20 +320,25 @@ Scheduler, cron and container arrangements.
 
 ### Large libraries
 
-TheIntroDB allows 1000 requests per UTC day with an API key, and 500 without one.
-A library of tens of thousands of items cannot be scanned in a day, so the tool
-is built to be left running rather than to be finished in one pass:
+TheIntroDB allows 100000 requests per UTC day with an API key, and 5000 without
+one. With a key that is more than a full pass over a large library needs, so a
+run is bounded by pacing rather than by the allowance: the client sends at most
+25 requests per 10 seconds, which puts 40,000 items at about four and a half
+hours at that rate. Without a key the allowance is worked through over several
+runs.
+
+What the tool is built around is that each item costs one request, ever:
 
 - **An item is scanned once.** Every lookup is recorded, and a recorded item is
   answered from the ledger afterwards without a request, however long ago it was
   scanned. Expiring that record is what would make a large library never finish,
   so nothing expires it.
-- **A run uses the whole day's allowance.** It scans the items it has never seen
-  until the allowance is spent, then stops cleanly and logs how many are left.
-  That is not an error, and the nightly timer keeps its schedule.
+- **A run spends the allowance on items it has never seen**, then stops cleanly
+  and logs how many are left. That is not an error, and the nightly timer keeps
+  its schedule.
 - **The next run continues.** Because every scan is recorded, it picks up exactly
-  where the last one stopped. A 40,000-item library at 1000 requests a day
-  converges in about 40 days, and each run writes the markers it has data for.
+  where the last one stopped, so an interrupted or allowance-stopped run costs
+  only the items it never reached.
 - **Re-scanning is deliberate.** Nothing is asked about twice on a timer. When a
   submission lands and you want fresh answers, name the items:
 
@@ -371,7 +376,7 @@ Lookup order: `$PLEX_SYNC_CONFIG`, `./plex-sync.toml`,
 | `plex.device_name` | `plex-sync` | what Plex shows for this tool in its device list |
 | `plex.client_id` | stored in `state_dir` | the identity Plex keys this install's device entry on |
 | `theintrodb.api_key` | | optional TheIntroDB API key |
-| `theintrodb.daily_budget` | `1000` | requests per UTC day |
+| `theintrodb.daily_budget` | `100000` | requests per UTC day |
 | `sources.chapters` | `false` | use chapter names as a source |
 | `sources.detection` | `false` | run local fingerprint detection |
 | `segments.intro` | `true` | write intro markers |

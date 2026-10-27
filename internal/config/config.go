@@ -211,7 +211,7 @@ func Default() *Config {
 		TheIntroDB: TheIntroDB{
 			BaseURL:      "https://api.theintrodb.org/v4",
 			TimeoutS:     20,
-			DailyBudget:  1000,
+			DailyBudget:  AccountDailyBudget,
 			MaxPerWindow: 25,
 			WindowS:      10,
 			MissTTLDays:  14,
@@ -272,19 +272,23 @@ func (t TheIntroDB) MinDelay() float64 {
 	return t.WindowS / float64(t.MaxPerWindow)
 }
 
-// AnonymousDailyBudget is the allowance without an API key: 500 per public IP
-// per UTC day, against 1000 for an account.
-const AnonymousDailyBudget = 500
+// AnonymousDailyBudget is the allowance without an API key: 5000 per public IP
+// per UTC day, against 100000 for an account.
+//
+// The numbers are the API's own (UsageLimitMediaPublicIP and
+// UsageLimitMediaAuthenticated, and the X-UsageLimit-Limit header it sends
+// back), and they are higher than they were: an account used to get 1000 a day.
+const AnonymousDailyBudget = 5000
 
 // AccountDailyBudget is the allowance with an API key, and the highest any
 // caller can have.
-const AccountDailyBudget = 1000
+const AccountDailyBudget = 100000
 
 // EffectiveDailyBudget is the allowance that actually applies.
 //
-// Budgeting for 1000 requests when only 500 are allowed means discovering the
-// limit by being rate-limited for the rest of the day, so an anonymous client
-// budgets for the anonymous allowance. A non-positive budget still means
+// Budgeting for 100000 requests when only 5000 are allowed means discovering
+// the limit by being rate-limited for the rest of the day, so an anonymous
+// client budgets for the anonymous allowance. A non-positive budget still means
 // "uncounted".
 func (t TheIntroDB) EffectiveDailyBudget() int {
 	if t.DailyBudget <= 0 {
@@ -674,10 +678,10 @@ func (c *Config) Validate() error {
 	if c.TheIntroDB.DailyBudget <= 0 {
 		problems = append(problems, "theintrodb.daily_budget must be positive")
 	}
-	// An account allowance of 1000 is the highest anyone can have, so a bigger
-	// number is not a bigger budget, it is a number that cannot be true. Left
-	// unchecked it would sit in the file looking like an allowance nobody will
-	// honour.
+	// An account allowance of 100000 is the highest anyone can have, so a
+	// bigger number is not a bigger budget, it is a number that cannot be
+	// true. Left unchecked it would sit in the file looking like an allowance
+	// nobody will honour.
 	if c.TheIntroDB.DailyBudget > AccountDailyBudget {
 		problems = append(problems, fmt.Sprintf(
 			"theintrodb.daily_budget must not exceed the ceiling of %d requests a day",
@@ -871,7 +875,7 @@ client_id = ""
 # The TheIntroDB API key is optional. With a key the daily allowance is higher
 # and your own pending submissions are included in what you get back.
 api_key = ""
-daily_budget = 1000
+daily_budget = 100000
 
 [sources]
 # Alternate marker sources. TheIntroDB always wins a segment type it answered;

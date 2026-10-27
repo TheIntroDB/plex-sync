@@ -65,21 +65,63 @@ func TestPacingStaysUnderTheServerCeiling(t *testing.T) {
 }
 
 func TestAnonymousClientBudgetsForTheAnonymousAllowance(t *testing.T) {
-	anonymous := TheIntroDB{DailyBudget: 1000}
+	// A budget above the anonymous allowance is not a bigger budget without a
+	// key: the client would discover the real limit by being rate-limited.
+	anonymous := TheIntroDB{DailyBudget: AccountDailyBudget}
 	if got := anonymous.EffectiveDailyBudget(); got != AnonymousDailyBudget {
 		t.Errorf("without a key the budget is %d, want %d: budgeting for more means "+
 			"discovering the limit by being rate-limited", got, AnonymousDailyBudget)
 	}
 
-	withKey := TheIntroDB{DailyBudget: 1000, APIKey: "abc"}
-	if got := withKey.EffectiveDailyBudget(); got != 1000 {
-		t.Errorf("with a key the budget is %d, want the configured 1000", got)
+	// A budget under the allowance is what the caller asked for, and stays.
+	modest := TheIntroDB{DailyBudget: 120}
+	if got := modest.EffectiveDailyBudget(); got != 120 {
+		t.Errorf("a budget below the allowance became %d, want 120", got)
+	}
+
+	withKey := TheIntroDB{DailyBudget: AccountDailyBudget, APIKey: "key"}
+	if got := withKey.EffectiveDailyBudget(); got != AccountDailyBudget {
+		t.Errorf("with a key the budget is %d, want the configured %d", got, AccountDailyBudget)
 	}
 
 	// A non-positive budget means "do not count", and must stay that way.
 	uncounted := TheIntroDB{DailyBudget: 0}
 	if got := uncounted.EffectiveDailyBudget(); got != 0 {
 		t.Errorf("an uncounted budget became %d", got)
+	}
+}
+
+// The allowances are the API's, not invented here, and when the API raises them
+// these are the numbers that move. An account used to get 1000 requests a day;
+// raising it without raising the ceiling below made the real allowance
+// unconfigurable.
+func TestTheAllowancesMatchTheAPI(t *testing.T) {
+	if AccountDailyBudget != 100000 {
+		t.Errorf("account allowance = %d, want the API's 100000 (UsageLimitMediaAuthenticated)",
+			AccountDailyBudget)
+	}
+	if AnonymousDailyBudget != 5000 {
+		t.Errorf("anonymous allowance = %d, want the API's 5000 (UsageLimitMediaPublicIP)",
+			AnonymousDailyBudget)
+	}
+}
+
+// The ceiling has to accept the allowance the API actually grants, or a config
+// naming the real allowance is refused as a number that cannot be true.
+func TestTheBudgetCeilingAcceptsTheAccountAllowance(t *testing.T) {
+	cfg := Default()
+	if got := cfg.TheIntroDB.DailyBudget; got != AccountDailyBudget {
+		t.Errorf("the default budget is %d, want the account allowance %d", got, AccountDailyBudget)
+	}
+
+	cfg.TheIntroDB.DailyBudget = 100000 // the API's usage limit for an account
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("the account allowance must be configurable: %v", err)
+	}
+
+	cfg.TheIntroDB.DailyBudget = 100001
+	if err := cfg.Validate(); err == nil {
+		t.Error("a budget above the account allowance must be refused")
 	}
 }
 

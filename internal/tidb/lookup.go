@@ -63,7 +63,7 @@ func (r LookupResult) OK() bool { return r.Status == 200 || r.Status == 404 }
 // The order is deliberate. First, the item's scan record: if it has been looked
 // up before, the answer stored then is returned and no request is made, however
 // long ago that was. A library of tens of thousands of items against a daily
-// allowance of 500 or 1000 only ever finishes if each item is asked about once,
+// allowance of 5000 or 100000 only ever finishes if each item is asked about once,
 // and an item that was scanned is what "finished" means; the way to ask again
 // is LookupForced, which is what a plan that names the item for a re-scan does.
 //

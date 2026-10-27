@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -258,7 +259,11 @@ func TestARejectedValueIsNotApplied(t *testing.T) {
 	for range m.buffer {
 		press(m, "backspace")
 	}
-	typeText(m, "99999") // above the server's ceiling
+	// One above the ceiling the API grants. Taken from the constant so this case
+	// cannot quietly become a valid value when the allowance is raised -- which
+	// is what happened when it was hardcoded to 99999 and the ceiling moved to
+	// 100000.
+	typeText(m, strconv.Itoa(config.AccountDailyBudget+1))
 	press(m, "enter")
 
 	if !m.editing {

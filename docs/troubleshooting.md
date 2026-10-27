@@ -229,14 +229,15 @@ which puts them back.
 ## "budget" or "usage-limited" in a plan
 
 The day's allowance is spent. The run stops cleanly and resumes tomorrow. Without
-an API key the allowance is 500 requests a day instead of 1000; a key on your
+an API key the allowance is 5000 requests a day instead of 100000; a key on your
 TheIntroDB account raises it.
 
 ## Running out of allowance every day
 
-Expected on a large library: a full pass needs more requests than a day allows.
-Progress accumulates, because every answer including a 404 is cached, so each
-day works on new content.
+Expected without a key, or on a library big enough that one day's allowance does
+not cover it: a full pass needs more requests than a day allows. Progress
+accumulates, because every answer including a 404 is recorded, so each day works
+on new content.
 
 ## Undo
 
