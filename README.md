@@ -324,7 +324,8 @@ TheIntroDB allows 100000 requests per UTC day with an API key, and 5000 without
 one. With a key that is more than a full pass over a large library needs, so a
 run is bounded by pacing rather than by the allowance: the client sends at most
 25 requests per 10 seconds, which puts 40,000 items at about four and a half
-hours. Without a key the allowance is worked through over several runs.
+hours at that rate. Without a key the allowance is worked through over several
+runs.
 
 What the tool is built around is that each item costs one request, ever:
 
