@@ -1,8 +1,16 @@
-# TheIntroDB Plex Sync
+<img align="right" width="88" src="https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/integrations/plex.png" alt="Plex">
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/logo-banner.png">
-</p>
+[![Plex Pass](https://img.shields.io/badge/Plex-Pass-E5A00D?style=flat-square&logo=plex&logoColor=4ade80&labelColor=0d0d0d)](https://www.plex.tv)
+[![License](https://img.shields.io/github/license/TheIntroDB/plex-sync?style=flat-square&logo=gnu&logoColor=4ade80&label=License&labelColor=0d0d0d&color=038939)](https://github.com/TheIntroDB/plex-sync/blob/main/LICENSE)
+
+[![Stars](https://img.shields.io/github/stars/TheIntroDB/plex-sync?style=flat-square&logo=github&logoColor=4ade80&label=Stars&labelColor=0d0d0d&color=038939)](https://github.com/TheIntroDB/plex-sync/stargazers)
+[![Issues](https://img.shields.io/github/issues/TheIntroDB/plex-sync?style=flat-square&logo=github&logoColor=4ade80&label=Issues&labelColor=0d0d0d&color=038939)](https://github.com/TheIntroDB/plex-sync/issues)
+[![Last commit](https://img.shields.io/github/last-commit/TheIntroDB/plex-sync?style=flat-square&logo=git&logoColor=4ade80&label=Last%20commit&labelColor=0d0d0d&color=038939)](https://github.com/TheIntroDB/plex-sync/commits)
+[![Discord](https://img.shields.io/discord/1457550295742812307?style=flat-square&logo=discord&logoColor=4ade80&label=Discord&labelColor=0d0d0d&color=038939)](https://discord.com/channels/1457550295742812307/1457550298255200380)
+
+### TheIntroDB – Plex Sync
+
+---
 
 `plex-sync` fills in Plex's **intro** and **credits** markers from
 [TheIntroDB](https://theintrodb.org), so Plex does not have to audio-fingerprint
@@ -500,3 +508,12 @@ packages.
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <a href="https://theintrodb.org"><img src="https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/badge.png" alt="TheIntroDB" width="44" height="44"></a>
+  <br><br>
+  <sub><b>TheIntroDB</b> · community-submitted intro, recap, credits and preview timestamps for your media server<br>
+  <a href="https://theintrodb.org">theintrodb.org</a> · <a href="https://github.com/TheIntroDB">GitHub</a> · <a href="https://discord.com/channels/1457550295742812307/1457550298255200380">Discord</a></sub>
+</p>
