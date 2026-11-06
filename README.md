@@ -1,4 +1,4 @@
-<img align="right" width="88" src="https://raw.githubusercontent.com/TheIntroDB/theintrodb-assets/main/integrations/plex.png" alt="Plex">
+<img align="right" width="88" src="https://raw.githubusercontent.com/TheIntroDB/.github/main/integrations/plex.png" alt="Plex">
 
 [![Plex Pass](https://img.shields.io/badge/Plex-Pass-E5A00D?style=flat-square&logo=plex&logoColor=4ade80&labelColor=0d0d0d)](https://www.plex.tv)
 [![License](https://img.shields.io/github/license/TheIntroDB/plex-sync?style=flat-square&logo=gnu&logoColor=4ade80&label=License&labelColor=0d0d0d&color=038939)](https://github.com/TheIntroDB/plex-sync/blob/main/LICENSE)
