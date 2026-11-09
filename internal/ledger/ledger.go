@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package ledger is the tool's own durable state, kept in a SQLite database
 // that is separate from Plex's.
 //

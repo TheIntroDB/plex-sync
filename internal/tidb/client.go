@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package tidb is the TheIntroDB API client: lookups, the scan record, the
 // response cache, the request pacing and the daily budget.
 //

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 TheIntroDB
+
 """Point the Homebrew formula in the tap at a released version.
 
 Called by the release workflow after the release exists. It rewrites the

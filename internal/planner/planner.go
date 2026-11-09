@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package planner turns what the sources know into a change set.
 //
 // It is pure: it takes library items, per-source segment sets, the markers Plex

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package source holds the alternate marker sources.
 //
 // TheIntroDB is the primary source and lives in internal/tidb. These fill in

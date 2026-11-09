@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package plexdb reads and writes the markers Plex keeps in its SQLite library
 // database.
 //

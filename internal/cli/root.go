@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package cli is the command line and the entry point.
 //
 // It has two jobs: give scripts and cron everything the terminal interface can

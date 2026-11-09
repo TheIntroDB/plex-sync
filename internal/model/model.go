@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package model holds the shared vocabulary of the tool: library items,
 // segments as sources report them, and markers as Plex stores them.
 //

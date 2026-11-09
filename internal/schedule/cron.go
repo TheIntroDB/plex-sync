@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package schedule implements the cron subset the tool needs to run itself on a
 // timer.
 //

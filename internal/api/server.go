@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package api is the local control API.
 //
 // It is JSON only: there is no web interface and no HTML anywhere in this

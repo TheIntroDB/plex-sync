@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package httpclient is the single outbound HTTP path for the whole tool.
 //
 // It wraps Fiber's client (which is fasthttp underneath) so that Plex and
