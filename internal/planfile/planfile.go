@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package planfile reads and writes plans on disk.
 //
 // A plan file exists so the work can be split in two: deciding what should

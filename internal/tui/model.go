@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package tui is the interactive terminal interface.
 //
 // It is the default way to use the tool: a terminal, a keyboard, and no

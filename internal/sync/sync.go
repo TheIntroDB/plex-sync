@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package sync orchestrates a run: inventory, fetch, plan, apply.
 //
 // It is the only package that decides when something is written. The terminal

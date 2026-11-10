@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package app wires the pieces together.
 //
 // It owns the shared resources every interface needs, so the terminal

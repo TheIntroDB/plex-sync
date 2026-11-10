@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package plexapi talks to Plex Media Server over its HTTP API.
 //
 // It is read-only by necessity: Plex has no write API for intro or credits

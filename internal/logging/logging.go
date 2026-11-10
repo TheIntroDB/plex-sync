@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package logging configures the program's logger.
 //
 // Output goes to standard error, because standard output belongs to command

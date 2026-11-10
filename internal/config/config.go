@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Package config loads and validates the tool's configuration.
 //
 // Precedence, lowest to highest: built-in defaults, TOML file, environment

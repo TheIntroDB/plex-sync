@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 TheIntroDB
+
 #
 # Run the live tests in internal/plexdb against a copy of a real Plex database.
 #

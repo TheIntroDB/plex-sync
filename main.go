@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TheIntroDB
+
 // Command plex-sync fills in Plex's intro and credits markers from TheIntroDB.
 package main
 
